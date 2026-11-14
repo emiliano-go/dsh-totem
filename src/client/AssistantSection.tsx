@@ -10,6 +10,7 @@ const TABS: { id: AssistantTab; label: string }[] = [
   { id: 'reminders', label: 'Reminders' },
   { id: 'watches', label: 'Watches' },
   { id: 'notifications', label: 'Notifications' },
+  { id: 'laya', label: 'Laya' },
 ]
 
 const FIELD: React.CSSProperties = {
@@ -59,6 +60,19 @@ export function AssistantSection(props: AssistantSectionProps) {
     telegramChatId: state.config.telegramChatId ?? '',
   })
   const [watch, setWatch] = useState({ kind: 'page', url: '', condition: '', interval: '15' })
+  const [laya, setLaya] = useState({
+    passThreshold: String(state.config.layaPassThreshold ?? 0.65),
+    maxRetries: String(state.config.layaMaxRetries ?? 1),
+    timeoutMs: String(state.config.layaTimeoutMs ?? 60000),
+    stepChecks: state.config.layaStepChecks ?? 'veto',
+    stepCadence: state.config.layaStepCadence ?? 'turn',
+    stepMaxFeedback: String(state.config.layaStepMaxFeedback ?? 2),
+    verifyCommand: state.config.layaVerifyCommand ?? '',
+    verifyExternal: state.config.layaVerifyExternal ?? 'off',
+    verifyDisable: (state.config.layaVerifyDisable ?? []).join(', '),
+    model: state.config.layaModel ?? '',
+    questionsFile: state.config.layaQuestionsFile ?? '',
+  })
   const configKey = JSON.stringify(state.config)
   useEffect(() => {
     setDraft({
@@ -67,6 +81,19 @@ export function AssistantSection(props: AssistantSectionProps) {
       ntfyToken: state.config.ntfyToken ?? '',
       telegramBotToken: state.config.telegramBotToken ?? '',
       telegramChatId: state.config.telegramChatId ?? '',
+    })
+    setLaya({
+      passThreshold: String(state.config.layaPassThreshold ?? 0.65),
+      maxRetries: String(state.config.layaMaxRetries ?? 1),
+      timeoutMs: String(state.config.layaTimeoutMs ?? 60000),
+      stepChecks: state.config.layaStepChecks ?? 'veto',
+      stepCadence: state.config.layaStepCadence ?? 'turn',
+      stepMaxFeedback: String(state.config.layaStepMaxFeedback ?? 2),
+      verifyCommand: state.config.layaVerifyCommand ?? '',
+      verifyExternal: state.config.layaVerifyExternal ?? 'off',
+      verifyDisable: (state.config.layaVerifyDisable ?? []).join(', '),
+      model: state.config.layaModel ?? '',
+      questionsFile: state.config.layaQuestionsFile ?? '',
     })
   }, [configKey])
 
@@ -214,6 +241,99 @@ export function AssistantSection(props: AssistantSectionProps) {
                   </div>
                 </div>
               ))}
+          </div>
+        )
+        : null}
+
+      {state.tab === 'laya'
+        ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={MUTED}>The judge runs on finished turns at the configured threshold; the verify lane and step checks run before it. The composer switch starts/stops the server.</p>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 160 }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Pass threshold</span>
+                <input style={FIELD} value={laya.passThreshold} onChange={event => { setLaya({ ...laya, passThreshold: event.target.value }) }} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 140 }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Retries / turn</span>
+                <input style={FIELD} value={laya.maxRetries} onChange={event => { setLaya({ ...laya, maxRetries: event.target.value }) }} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 170 }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Request timeout (ms)</span>
+                <input style={FIELD} value={laya.timeoutMs} onChange={event => { setLaya({ ...laya, timeoutMs: event.target.value }) }} />
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 160 }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Step checks</span>
+                <select style={FIELD} value={laya.stepChecks} onChange={event => { setLaya({ ...laya, stepChecks: event.target.value }) }}>
+                  <option value="off">off</option>
+                  <option value="veto">veto</option>
+                  <option value="full">full</option>
+                </select>
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 160 }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Step cadence</span>
+                <select style={FIELD} value={laya.stepCadence} onChange={event => { setLaya({ ...laya, stepCadence: event.target.value }) }}>
+                  <option value="turn">turn</option>
+                  <option value="tool">tool</option>
+                  <option value="both">both</option>
+                </select>
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 150 }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Step feedback cap</span>
+                <input style={FIELD} value={laya.stepMaxFeedback} onChange={event => { setLaya({ ...laya, stepMaxFeedback: event.target.value }) }} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 150 }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>External scanners</span>
+                <select style={FIELD} value={laya.verifyExternal} onChange={event => { setLaya({ ...laya, verifyExternal: event.target.value }) }}>
+                  <option value="off">off</option>
+                  <option value="auto">auto</option>
+                  <option value="on">on</option>
+                </select>
+              </label>
+            </div>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>Verify command (optional)</span>
+              <input style={FIELD} placeholder="pytest -q" value={laya.verifyCommand} onChange={event => { setLaya({ ...laya, verifyCommand: event.target.value }) }} />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>Disabled rules (comma-separated)</span>
+              <input style={FIELD} placeholder="external-semgrep, test-weakened" value={laya.verifyDisable} onChange={event => { setLaya({ ...laya, verifyDisable: event.target.value }) }} />
+            </label>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 280px' }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Model path</span>
+                <input style={FIELD} value={laya.model} onChange={event => { setLaya({ ...laya, model: event.target.value }) }} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 280px' }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Questions file (optional)</span>
+                <input style={FIELD} value={laya.questionsFile} onChange={event => { setLaya({ ...laya, questionsFile: event.target.value }) }} />
+              </label>
+            </div>
+            <div style={ROW_ACTIONS}>
+              <Button
+                variant="primary"
+                disabled={state.writing}
+                onClick={() => {
+                  props.saveLaya({
+                    layaPassThreshold: Number(laya.passThreshold),
+                    layaMaxRetries: Number(laya.maxRetries),
+                    layaTimeoutMs: Number(laya.timeoutMs),
+                    layaStepChecks: laya.stepChecks,
+                    layaStepCadence: laya.stepCadence,
+                    layaStepMaxFeedback: Number(laya.stepMaxFeedback),
+                    layaVerifyCommand: laya.verifyCommand,
+                    layaVerifyExternal: laya.verifyExternal,
+                    layaVerifyDisable: laya.verifyDisable.split(',').map(value => value.trim()).filter(Boolean),
+                    layaModel: laya.model,
+                    layaQuestionsFile: laya.questionsFile,
+                  })
+                }}
+              >
+                Save Laya settings
+              </Button>
+            </div>
           </div>
         )
         : null}

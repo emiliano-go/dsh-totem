@@ -68,6 +68,10 @@ const routes = {
     if (path === '/totem/reminders') return { items: await deps.reminders.list(true) }
     if (path === '/totem/watches') return { items: await deps.watches.list(true) }
     if (path === '/totem/laya/status') return deps.laya.status()
+    if (path === '/totem/decisions') {
+      const message = url.searchParams.get('message') ?? ''
+      return { decision: message.length > 0 ? deps.laya.decisionFor(message) ?? null : null }
+    }
     throw Object.assign(new Error('not found'), { status: 404 })
   },
   async POST(

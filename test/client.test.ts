@@ -108,6 +108,8 @@ test('apply registers the Totem memory page and the Assistant section', () => {
   expect(section.options.label()).toBe('Assistant')
   const laya = slots.find(entry => entry.options.name === 'conversation.input.left')
   expect(laya?.options.id).toBe('laya')
+  const badge = slots.find(entry => entry.options.name === 'conversation.chat.assistant-actions')
+  expect(badge?.options.id).toBe('laya-decision')
 })
 
 test('summary view renders the description, detail view renders one form', async () => {

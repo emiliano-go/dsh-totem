@@ -15,6 +15,8 @@ import { AssistantSection } from './AssistantSection.tsx'
 import { AssistantController } from './assistant-controller.ts'
 import { LayaSwitch } from './LayaSwitch.tsx'
 import { LayaSwitchController } from './laya-switch.ts'
+import { DecisionBadge } from './DecisionBadge.tsx'
+import { DecisionBadgeController } from './decision-badge.ts'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 /** Required browser services. */
@@ -50,6 +52,14 @@ export function apply(ctx: ClientContext): void {
     order: 10,
     inject: () => layaSwitch.inject(),
   }, LayaSwitch)), 'dsh-totem: laya switch')
+
+  const decisionBadge = new DecisionBadgeController(ctx.configForms.get('totem'))
+  ctx.effect(() => ctx.slots.inject('conversation.chat.assistant-actions', () => ctx.slots.register({
+    name: 'conversation.chat.assistant-actions',
+    id: 'laya-decision',
+    order: 20,
+    inject: () => ({ lookup: decisionBadge.lookup }),
+  }, DecisionBadge)), 'dsh-totem: decision badge')
 
   const assistant = new AssistantController(ctx.configForms.get('totem'), ctx)
   ctx.effect(() => () => { assistant.dispose() }, 'dsh-totem: assistant section lifetime')

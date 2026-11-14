@@ -32,12 +32,14 @@ export function LayaSwitch(props: LayaSwitchProps) {
   const title = state.error !== null
     ? `Laya: ${state.error}`
     : state.enabled
-      ? `Laya decision engine is on${state.healthy ? '' : ' (server starting…)'}`
+      ? state.loaded
+        ? 'Laya decision engine is on'
+        : 'Laya decision engine is starting; the model is loading into VRAM…'
       : 'Laya decision engine is off; the model is not loaded'
   return (
     <span style={ROW} title={title}>
       <span style={{ ...LABEL, ...state.error === null ? {} : { color: 'var(--dsw-alias-text-error, #e5484d)' } }}>
-        Laya
+        Laya{state.enabled && !state.loaded ? ' · loading' : ''}
       </span>
       <Switch
         checked={state.enabled}

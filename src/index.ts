@@ -97,27 +97,27 @@ export interface Config {
   /** Whether this plugin owns the laya server process. */
   layaManageServer: boolean
   /** Laya pass threshold. */
-  layaPassThreshold: number
+  layaPassThreshold: Volatile<number>
   /** Feedback retries per turn. */
-  layaMaxRetries: number
+  layaMaxRetries: Volatile<number>
   /** Laya request timeout in milliseconds. */
-  layaTimeoutMs: number
+  layaTimeoutMs: Volatile<number>
   /** Optional question-set override path. */
-  layaQuestionsFile: string
+  layaQuestionsFile: Volatile<string>
   /** Display name of the loaded laya model. */
-  layaModel: string
+  layaModel: Volatile<string>
   /** Step-level checks: off, deterministic veto only, or full judge. */
-  layaStepChecks: 'off' | 'veto' | 'full'
+  layaStepChecks: Volatile<'off' | 'veto' | 'full'>
   /** Step check cadence. */
-  layaStepCadence: 'turn' | 'tool' | 'both'
+  layaStepCadence: Volatile<'turn' | 'tool' | 'both'>
   /** Corrective feedback budget per turn. */
-  layaStepMaxFeedback: number
+  layaStepMaxFeedback: Volatile<number>
   /** Optional project verify command run once per turn. */
-  layaVerifyCommand: string
+  layaVerifyCommand: Volatile<string>
   /** External scanners: auto, on, or off. */
-  layaVerifyExternal: 'auto' | 'on' | 'off'
+  layaVerifyExternal: Volatile<'auto' | 'on' | 'off'>
   /** Deterministic rules to disable. */
-  layaVerifyDisable: string[]
+  layaVerifyDisable: Volatile<string[]>
 }
 
 /** Loader schema; every field is live so the Plugins page can edit it. */
@@ -146,21 +146,21 @@ export const Config: z<Config> = z.object({
   telegramBotToken: z.string().default('').volatile(),
   telegramChatId: z.string().default('').volatile(),
   watchAllowPrivate: z.boolean().default(false).volatile(),
-  layaEnabled: z.boolean().default(true),
+  layaEnabled: z.boolean().default(false),
   layaBaseUrl: z.string().default('http://127.0.0.1:8765'),
   layaServerCommand: z.string().default('/home/eclipse/Documents/laya-ft/.venv/bin/python /home/eclipse/Documents/GitHub/safebox/encoder/script/laya-server.py --model /data/laya-ft/out-m5mem4-head --port 8765'),
   layaManageServer: z.boolean().default(true),
-  layaPassThreshold: z.number().default(0.65),
-  layaMaxRetries: z.number().step(1).min(0).default(1),
-  layaTimeoutMs: z.number().step(1).min(1000).default(60000),
-  layaQuestionsFile: z.string().default(''),
-  layaModel: z.string().default('/data/laya-ft/out-m5mem4-head'),
-  layaStepChecks: z.union(['off', 'veto', 'full']).default('veto'),
-  layaStepCadence: z.union(['turn', 'tool', 'both']).default('turn'),
-  layaStepMaxFeedback: z.number().step(1).min(0).default(2),
-  layaVerifyCommand: z.string().default(''),
-  layaVerifyExternal: z.union(['auto', 'on', 'off']).default('off'),
-  layaVerifyDisable: z.array(String).default([]),
+  layaPassThreshold: z.number().default(0.65).volatile(),
+  layaMaxRetries: z.number().step(1).min(0).default(1).volatile(),
+  layaTimeoutMs: z.number().step(1).min(1000).default(60000).volatile(),
+  layaQuestionsFile: z.string().default('').volatile(),
+  layaModel: z.string().default('/data/laya-ft/out-m5mem4-head').volatile(),
+  layaStepChecks: z.union(['off', 'veto', 'full']).default('veto').volatile(),
+  layaStepCadence: z.union(['turn', 'tool', 'both']).default('turn').volatile(),
+  layaStepMaxFeedback: z.number().step(1).min(0).default(2).volatile(),
+  layaVerifyCommand: z.string().default('').volatile(),
+  layaVerifyExternal: z.union(['auto', 'on', 'off']).default('off').volatile(),
+  layaVerifyDisable: z.array(String).default([]).volatile(),
 })
 
 function resolveConfig(config: Config): TotemConfig {
@@ -244,17 +244,17 @@ export function apply(ctx: Context, config: Config): void {
     baseUrl: live(config.layaBaseUrl),
     serverCommand: live(config.layaServerCommand),
     manageServer: live(config.layaManageServer),
-    passThreshold: live(config.layaPassThreshold),
-    maxRetries: live(config.layaMaxRetries),
-    timeoutMs: live(config.layaTimeoutMs),
-    questionsFile: live(config.layaQuestionsFile),
-    model: live(config.layaModel),
-    stepChecks: live(config.layaStepChecks),
-    stepCadence: live(config.layaStepCadence),
-    stepMaxFeedback: live(config.layaStepMaxFeedback),
-    verifyCommand: live(config.layaVerifyCommand),
-    verifyExternal: live(config.layaVerifyExternal),
-    verifyDisable: live(config.layaVerifyDisable),
+    passThreshold: config.layaPassThreshold,
+    maxRetries: config.layaMaxRetries,
+    timeoutMs: config.layaTimeoutMs,
+    questionsFile: config.layaQuestionsFile,
+    model: config.layaModel,
+    stepChecks: config.layaStepChecks,
+    stepCadence: config.layaStepCadence,
+    stepMaxFeedback: config.layaStepMaxFeedback,
+    verifyCommand: config.layaVerifyCommand,
+    verifyExternal: config.layaVerifyExternal,
+    verifyDisable: config.layaVerifyDisable,
   }, statePath('laya.json'))
   registerLayaTool(ctx, laya)
   void laya.initialize()
@@ -281,6 +281,7 @@ export function apply(ctx: Context, config: Config): void {
     calls: Map<string, { name: string; arguments: string }>
     changes: { tool: string; path: string; input: string; output: string; diff?: string }[]
     grounding: { tool: string; input?: string; output: string }[]
+    messageId?: string
   }
   const buffers = new WeakMap<object, TurnBuffer>()
   const bufferFor = (session: object): TurnBuffer => {
@@ -302,12 +303,15 @@ export function apply(ctx: Context, config: Config): void {
     toolCalls: buffer.toolCalls,
     changes: buffer.changes,
     grounding: buffer.grounding,
+    ...buffer.messageId === undefined ? {} : { messageId: buffer.messageId },
   })
   const MUTATING = new Set(['write', 'edit', 'apply_patch'])
 
   ctx.on('session/event', (session, event) => {
     if (event.type === 'turn/start') {
-      bufferFor(session).turn = (event.data as { turn?: number }).turn ?? 0
+      const buffer = bufferFor(session)
+      buffer.turn = (event.data as { turn?: number }).turn ?? 0
+      buffer.messageId = undefined
     } else if (event.type === 'user/message') {
       const data = event.data as { message?: { content?: unknown[]; source?: { kind?: string } }; content?: unknown[]; source?: { kind?: string } }
       const message = data.message ?? data
@@ -322,9 +326,10 @@ export function apply(ctx: Context, config: Config): void {
         buffer.grounding = []
       }
     } else if (event.type === 'assistant/message') {
-      const message = (event.data as { message?: { content?: unknown[] } }).message
+      const message = (event.data as { message?: { id?: string; content?: unknown[] } }).message
       const blocks = Array.isArray(message?.content) ? message.content : []
       const buffer = bufferFor(session)
+      if (typeof message?.id === 'string') buffer.messageId = message.id
       const text = textOf(blocks)
       if (text.trim().length > 0) buffer.texts.push(text)
       for (const block of blocks) {

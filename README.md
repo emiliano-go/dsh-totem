@@ -113,9 +113,15 @@ The `totem` plugin can run the custom Laya judge locally:
 - **Step checks**: `layaStepChecks` (`off`/`veto`/`full`), `layaStepCadence`
   (`turn`/`tool`/`both`), and a per-turn feedback budget with dedupe.
 - **Log**: `<project>/.encoder/decision-log.jsonl` (turn and step entries).
-- **Managed server**: start/stop with the composer **Laya** switch; off kills
-  the server (frees VRAM), hides `decision_ask`, and skips verify/step/judge.
-  State persists in `~/.dsh/totem/laya.json`.
+- **Managed server**: the composer **Laya** switch is **off by default**. Turning
+  it on starts the server and preloads the model into VRAM (switch shows
+  `· loading` until ready); turning it off kills the process, frees VRAM, hides
+  `decision_ask`, and skips verify/step/judge. State persists in
+  `~/.dsh/totem/laya.json`.
+- **Assistant → Laya tab**: pass threshold, retries, step checks/cadence/budget,
+  verify command, external scanners, disabled rules, model path, questions file.
+- **Chat footer badge**: finalized assistant messages show `· Decision <verdict>
+  <composite>` once the turn's evaluation is recorded.
 
 ```yaml
 - id: totem

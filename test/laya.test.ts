@@ -40,6 +40,7 @@ function engine(on: boolean): LayaEngine {
   const totem = { call: async () => [], config: {} }
   const instance = new LayaEngine({} as any, totem as any, config as any, join(mkdtempSync(join(tmpdir(), 'laya-')), 'laya.json'))
   ;(instance as any).on = on
+  ;(instance as any).loaded = on
   return instance
 }
 

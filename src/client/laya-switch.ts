@@ -12,6 +12,7 @@ interface SwitchConfig {
 export interface LayaSwitchState {
   enabled: boolean
   healthy: boolean
+  loaded: boolean
   busy: boolean
   error: string | null
 }
@@ -34,7 +35,7 @@ export class LayaSwitchController {
     private readonly form: SettingsFormScope<SwitchConfig>,
     private readonly ctx: ClientContext,
   ) {
-    this.store = createSnapshotStore({ enabled: false, healthy: false, busy: false, error: null })
+    this.store = createSnapshotStore({ enabled: false, healthy: false, loaded: false, busy: false, error: null })
     this.unsubscribe = form.subscribe(() => { this.publish() })
     this.timer = setInterval(() => { void this.refresh() }, 5000)
     void this.refresh()
@@ -83,8 +84,8 @@ export class LayaSwitchController {
 
   private async refresh(): Promise<void> {
     try {
-      const status = await this.request<{ enabled: boolean; healthy: boolean }>('/laya/status', 'GET')
-      this.update({ enabled: status.enabled, healthy: status.healthy, error: null })
+      const status = await this.request<{ enabled: boolean; healthy: boolean; loaded: boolean }>('/laya/status', 'GET')
+      this.update({ enabled: status.enabled, healthy: status.healthy, loaded: status.loaded, error: null })
     } catch (error) {
       this.update({ error: error instanceof Error ? error.message : String(error) })
     }
@@ -95,11 +96,11 @@ export class LayaSwitchController {
     const next = !this.store.getSnapshot().enabled
     this.update({ busy: true, error: null })
     try {
-      const status = await this.request<{ enabled: boolean; healthy: boolean }>(
+      const status = await this.request<{ enabled: boolean; healthy: boolean; loaded: boolean }>(
         next ? '/laya/enable' : '/laya/disable',
         'POST',
       )
-      this.update({ enabled: status.enabled, healthy: status.healthy, busy: false })
+      this.update({ enabled: status.enabled, healthy: status.healthy, loaded: status.loaded, busy: false })
     } catch (error) {
       this.update({ busy: false, error: error instanceof Error ? error.message : String(error) })
     }

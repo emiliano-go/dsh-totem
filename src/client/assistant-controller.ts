@@ -55,6 +55,17 @@ export interface AssistantConfig {
   ntfyToken?: string
   telegramBotToken?: string
   telegramChatId?: string
+  layaPassThreshold?: number
+  layaMaxRetries?: number
+  layaTimeoutMs?: number
+  layaStepChecks?: string
+  layaStepCadence?: string
+  layaStepMaxFeedback?: number
+  layaVerifyCommand?: string
+  layaVerifyExternal?: string
+  layaVerifyDisable?: string[]
+  layaModel?: string
+  layaQuestionsFile?: string
 }
 
 export type AssistantTab = 'memory' | 'candidates' | 'reminders' | 'watches' | 'notifications'
@@ -92,6 +103,7 @@ export interface AssistantFace {
   cancelWatch: (id: string) => void
   addWatch: (draft: { kind: string; url: string; condition: string; interval: string }) => void
   saveConfig: (values: AssistantConfig) => void
+  saveLaya: (values: AssistantConfig) => void
   testNotification: () => void
 }
 
@@ -153,6 +165,7 @@ export class AssistantController {
       cancelWatch: id => { void this.action(`/watches/${encodeURIComponent(id)}/cancel`, 'Watch stopped.') },
       addWatch: draft => { void this.addWatch(draft) },
       saveConfig: values => { void this.saveConfig(values) },
+      saveLaya: values => { void this.saveLaya(values) },
       testNotification: () => { void this.testNotification() },
     }
   }
@@ -323,6 +336,26 @@ export class AssistantController {
     this.writing = false
     this.notice = ok ? 'Notification settings saved.' : null
     this.error = ok ? null : 'The Host did not accept the notification settings.'
+    this.publish()
+  }
+
+  private async saveLaya(values: AssistantConfig): Promise<void> {
+    const snapshot = this.form.getSnapshot()
+    const fields: (keyof AssistantConfig)[] = [
+      'layaPassThreshold', 'layaMaxRetries', 'layaTimeoutMs', 'layaStepChecks', 'layaStepCadence',
+      'layaStepMaxFeedback', 'layaVerifyCommand', 'layaVerifyExternal', 'layaVerifyDisable',
+      'layaModel', 'layaQuestionsFile',
+    ]
+    this.writing = true
+    this.publish()
+    const ok = await this.form.mutate(fields.map(field => ({
+      op: 'set' as const,
+      path: [field],
+      value: values[field] as never,
+    })), snapshot.revision)
+    this.writing = false
+    this.notice = ok ? 'Laya settings saved.' : null
+    this.error = ok ? null : 'The Host did not accept the Laya settings.'
     this.publish()
   }
 

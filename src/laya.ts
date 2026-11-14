@@ -17,6 +17,7 @@ export interface TurnSnapshot {
   toolCalls: { name: string; arguments: string }[]
   changes: { tool: string; path: string; input: string; output: string; diff?: string }[]
   grounding: { tool: string; input?: string; output: string }[]
+  messageId?: string
 }
 
 interface LayaAnswer {
@@ -183,6 +184,8 @@ function clip(value: string, max: number): string {
 export class LayaEngine {
   private child: ChildProcess | undefined
   private on = false
+  private loaded = false
+  private readonly recent = new Map<string, { verdict: string; composite: number | null; at: string; session: string; turn: number }>()
   private readonly stepFeedback = new Map<string, number>()
   private readonly stepSeen = new Map<string, Set<string>>()
   private readonly verifyCache = new Map<string, { at: number; findings: VerifyFinding[]; veto: boolean }>()
@@ -223,32 +226,57 @@ export class LayaEngine {
     await this.stopServer()
   }
 
-  async status(): Promise<{ enabled: boolean; healthy: boolean; managed: boolean; baseUrl: string; model: string }> {
+  async status(): Promise<{ enabled: boolean; healthy: boolean; loaded: boolean; managed: boolean; baseUrl: string; model: string }> {
     return {
       enabled: this.enabled(),
       healthy: await this.healthy(),
+      loaded: this.loaded,
       managed: this.child !== undefined,
       baseUrl: this.config.baseUrl.get(),
       model: this.config.model.get(),
     }
   }
 
+  /** Latest decision recorded for one assistant message. */
+  decisionFor(messageId: string): { verdict: string; composite: number | null; at: string; session: string; turn: number } | undefined {
+    return this.recent.get(messageId)
+  }
+
   async enable(): Promise<void> {
     this.on = true
+    this.loaded = false
     await this.persist(true)
-    if (await this.healthy()) return
-    if (!this.config.manageServer.get()) throw new Error('laya server is not running and manageServer is false')
-    this.startServer()
-    const deadline = Date.now() + 90_000
-    while (Date.now() < deadline) {
-      if (await this.healthy()) return
-      await new Promise(resolve => setTimeout(resolve, 1000))
+    if (!(await this.healthy())) {
+      if (!this.config.manageServer.get()) throw new Error('laya server is not running and manageServer is false')
+      this.startServer()
+      const deadline = Date.now() + 90_000
+      while (Date.now() < deadline) {
+        if (await this.healthy()) break
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+      if (!(await this.healthy())) throw new Error('laya server did not become healthy')
     }
-    throw new Error('laya server did not become healthy')
+    await this.warmup()
+    this.loaded = true
+  }
+
+  /** Load the model into VRAM with one tiny request; the shim loads lazily. */
+  private async warmup(): Promise<void> {
+    const response = await fetch(`${this.config.baseUrl.get().replace(/\/+$/u, '')}/v1/systemone`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        state: { task: 'warmup' },
+        questions: { warmup: { type: 'noul', instructions: 'Warmup request.' } },
+      }),
+      signal: AbortSignal.timeout(180_000),
+    })
+    if (!response.ok) throw new Error(`laya warmup failed (${response.status})`)
   }
 
   async disable(): Promise<void> {
     this.on = false
+    this.loaded = false
     await this.persist(false)
     await this.stopServer()
   }
@@ -315,7 +343,7 @@ export class LayaEngine {
     signal?: AbortSignal,
     options: { kind?: 'mutation' | 'answer' | 'step'; rateMemory?: boolean; key?: string } = {},
   ): Promise<DecisionOutcome | undefined> {
-    if (!this.enabled() || !(await this.healthy())) return undefined
+    if (!this.enabled() || !this.loaded || !(await this.healthy())) return undefined
     const project = (agent as { session?: { header?: { cwd?: string } } } | undefined)?.session?.header?.cwd
     const verified = await this.verifySnapshot(snapshot, project, options.key)
     const findings = verified.findings
@@ -364,7 +392,19 @@ export class LayaEngine {
     const outcome = decide(payload.answers, questions as never, this.config.passThreshold.get())
     outcome.paths = [...new Set(snapshot.changes.map(change => change.path))]
     outcome.findings = findings
-    await this.log(project, { kind: options.kind ?? (snapshot.changes.length > 0 ? 'mutation' : 'answer'), ...outcome, usage: payload.usage, task: snapshot.task })
+    await this.log(project, {
+      kind: options.kind ?? (snapshot.changes.length > 0 ? 'mutation' : 'answer'),
+      ...outcome, usage: payload.usage, task: snapshot.task,
+      session: options.key?.split(':')[0], messageId: snapshot.messageId,
+    })
+    if (snapshot.messageId !== undefined) {
+      this.recent.set(snapshot.messageId, {
+        verdict: outcome.verdict, composite: outcome.composite,
+        at: new Date().toISOString(),
+        session: options.key?.split(':')[0] ?? '', turn: Number(options.key?.split(':')[1] ?? 0),
+      })
+      while (this.recent.size > 200) this.recent.delete(this.recent.keys().next().value as string)
+    }
     if (options.rateMemory !== false) await this.rateMemory(project, memory, outcome)
     return outcome
   }
@@ -438,7 +478,7 @@ export class LayaEngine {
     key: string
     project?: string
   }): Promise<string | undefined> {
-    if (!this.enabled()) return undefined
+    if (!this.enabled() || !this.loaded) return undefined
     const mode = this.config.stepChecks.get()
     if (mode === 'off') return undefined
     if ((this.stepFeedback.get(input.key) ?? 0) >= this.config.stepMaxFeedback.get()) return undefined
@@ -480,7 +520,7 @@ export class LayaEngine {
     const key = `${input.agent.session.id}:${input.turn}`
     const used = this.retries.get(key) ?? 0
     if (used >= this.config.maxRetries.get()) return
-    const outcome = await this.evaluate(input.snapshot, input.agent, input.signal)
+    const outcome = await this.evaluate(input.snapshot, input.agent, input.signal, { key })
     if (outcome === undefined || outcome.verdict === 'pass') return
     this.retries.set(key, used + 1)
     const text = feedback(outcome, this.config.passThreshold.get(), outcome.paths)
