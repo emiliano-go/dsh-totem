@@ -94,7 +94,7 @@ export class LayaSwitchController {
   private async toggle(): Promise<void> {
     if (this.store.getSnapshot().busy) return
     const next = !this.store.getSnapshot().enabled
-    this.update({ busy: true, error: null })
+    this.update({ busy: true, enabled: next, loaded: false, error: null })
     try {
       const status = await this.request<{ enabled: boolean; healthy: boolean; loaded: boolean }>(
         next ? '/laya/enable' : '/laya/disable',
@@ -103,6 +103,7 @@ export class LayaSwitchController {
       this.update({ enabled: status.enabled, healthy: status.healthy, loaded: status.loaded, busy: false })
     } catch (error) {
       this.update({ busy: false, error: error instanceof Error ? error.message : String(error) })
+      void this.refresh()
     }
   }
 }
