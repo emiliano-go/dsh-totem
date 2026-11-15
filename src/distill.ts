@@ -223,6 +223,41 @@ export async function distillAuthored(
   }
 }
 
+/** Evidence for one session summary. */
+export interface SessionSummaryInput {
+  project: string
+  assistantText: string
+  files: string[]
+  tools: string[]
+}
+
+const SESSION_SYSTEM = `You summarize one completed work session for a coding agent.
+Return one or two plain-text sentences describing what changed and why.
+- Focus on the resulting behavior and the reason for it.
+- Mention the most important files only when they aid recall.
+- Do not list every edit, do not use markdown, and do not invent facts.
+Return an empty string when the session produced no durable change.`
+
+/** Summarize a session's changes in one or two sentences. */
+export async function distillSession(
+  ctx: Context,
+  target: DistillTarget,
+  input: SessionSummaryInput,
+  signal?: AbortSignal,
+  sessionId?: string,
+): Promise<string | undefined> {
+  const payload = JSON.stringify({
+    project: input.project,
+    assistantText: input.assistantText.slice(0, 12000),
+    files: input.files.slice(0, 80),
+    tools: input.tools.slice(0, 20),
+  })
+  const text = await runOneShot(ctx, target, SESSION_SYSTEM, payload, signal, sessionId)
+  if (text === undefined) return undefined
+  const clean = text.trim().replace(/\s+/gu, ' ').slice(0, 800)
+  return clean.length === 0 ? undefined : clean
+}
+
 /**
  * Run one generic auxiliary model call.
  * @returns the assembled text, or `undefined` on any transport/model failure.

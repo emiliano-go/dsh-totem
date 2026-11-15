@@ -7,7 +7,7 @@ import { registerMemoryTools } from '../src/tools.ts'
 
 const caps = { limit: READ_LIMIT, maxLineLength: 2000, maxBytes: 51200, streamMinSize: STREAM_MIN_SIZE }
 
-function capture() {
+function capture(totem?: unknown) {
   const tools: any[] = []
   const ctx = {
     systemPrompt: { section: () => {}, getSectionOrder: () => 0 },
@@ -15,7 +15,7 @@ function capture() {
       register: (definition: any) => { tools.push(definition); return () => {} },
       get: () => undefined,
     },
-    get: () => undefined,
+    get: (name: string) => name === 'totem' ? totem : undefined,
   }
   const sandbox = {
     escalationModes: [] as string[],
@@ -33,6 +33,25 @@ describe('forked file tools', () => {
     const read = tools.find(tool => tool.name === 'read')
     expect(read.parameters.required).toContain('memory')
     expect(read.parameters.properties.memory.properties.kind.enum).toEqual(['register'])
+  })
+
+  test('read returns a fresh file TLDR without touching the filesystem', async () => {
+    const { tools, ctx } = capture({
+      cachedRead: async () => ({
+        id: 'item-1', path: 'src/queue.py', tldr: 'Queue helpers.',
+        lineCount: 4, symbols: [{ name: 'retry', kind: 'function' }],
+      }),
+    })
+    applyReadTool(ctx as any, caps)
+    const read = tools.find(tool => tool.name === 'read')
+    const result = await read.execute(
+      { file_path: 'src/queue.py', memory: { kind: 'register' } },
+      { agent: {}, signal: new AbortController().signal },
+    )
+    expect(result.cached).toBe(true)
+    expect(result.totalLines).toBe(4)
+    expect(result.tldr).toBe('Queue helpers.')
+    expect(result.symbols[0].name).toBe('retry')
   })
 
   test('write, edit, and apply_patch require a memory marker', () => {
@@ -58,10 +77,20 @@ describe('native memory tools', () => {
       'memory_search', 'memory_get', 'memory_list', 'memory_create', 'memory_update',
       'memory_delete', 'memory_recent', 'memory_tasks', 'memory_commands', 'memory_relate',
       'memory_relations', 'memory_history', 'memory_verify', 'engineering_context',
-      'memory_export', 'memory_import',
+      'memory_check_record', 'memory_audit', 'memory_quality', 'memory_export', 'memory_import',
+      'memory_feedback', 'memory_feedback_list', 'memory_train_models',
+      'memory_consolidate', 'memory_file_context', 'memory_session_summary',
+      'memory_workflow', 'memory_profile', 'memory_graph', 'memory_rollup',
+      'memory_heat', 'memory_decay', 'memory_induce_workflow', 'memory_maintenance',
+      'memory_touch',
+      'memory_export_markdown', 'memory_import_markdown',
     ]) expect(names).toContain(name)
     const create = tools.find(tool => tool.name === 'memory_create')
     expect(create.parameters.required).toContain('type')
     expect(create.parameters.properties.tags.items.type).toBe('string')
+    expect(create.parameters.properties.valid_from.type).toBe('string')
+    const context = tools.find(tool => tool.name === 'engineering_context')
+    expect(context.parameters.properties.as_of.type).toBe('string')
+    expect(context.parameters.properties.include_expired.type).toBe('boolean')
   })
 })

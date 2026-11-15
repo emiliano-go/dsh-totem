@@ -41,3 +41,15 @@ test('unsafe advice is vetoed; clean changes pass', () => {
   expect(verifyAnswer('You can disable TLS verification for this request.').veto).toBe(true)
   expect(verifyChanges([{ tool: 'edit', input: 'return a + b', output: '', paths: ['src/math.ts'] }]).veto).toBe(false)
 })
+
+test('repo-wide formatting and bulk rewrites are scope creep', () => {
+  const formatter = verifyChanges([{ tool: 'bash', input: 'npx prettier --write .', output: 'reformatted 30 files' }])
+  expect(formatter.findings.some(finding => finding.rule === 'scope-unrelated')).toBe(true)
+  expect(formatter.veto).toBe(true)
+
+  const bulk = verifyChanges([{ tool: 'write', input: 'filePath=src/user.ts rewrote 400 lines into a repository pattern', output: '', paths: ['src/user.ts'] }])
+  expect(bulk.findings.some(finding => finding.rule === 'scope-unrelated')).toBe(true)
+
+  const good = verifyChanges([{ tool: 'write', input: 'filePath=src/parser.ts rewrote into 5 helpers', output: '', paths: ['src/parser.ts'] }])
+  expect(good.findings.some(finding => finding.rule === 'scope-unrelated')).toBe(false)
+})

@@ -82,6 +82,26 @@ export function TotemMemoryCard(props: TotemMemoryCardProps) {
           The model that writes Totem memories after file reads and edits. Leave the deployment
           default to reuse your main agent model, or pick any model from any configured provider.
         </p>
+        <label htmlFor="dsh-totem-embedding-backend" style={{ fontSize: 13, fontWeight: 600 }}>
+          Retrieval encoder
+        </label>
+        <select
+          id="dsh-totem-embedding-backend"
+          style={SELECT_STYLE}
+          value={state.requestedBackend}
+          disabled={!state.writable || state.saving}
+          onChange={event => { props.selectBackend(event.target.value) }}
+        >
+          <option value="auto">Automatic (Model2Vec when installed)</option>
+          <option value="model2vec">Model2Vec (potion-retrieval-32M)</option>
+          <option value="hash">Offline hash (no extra dependency)</option>
+        </select>
+        <p style={HELP_STYLE}>
+          The dense retrieval leg used by Totem. Model2Vec needs the optional
+          {' '}<code>totem-mcp[embeddings]</code> package and downloads
+          {' '}<code>minishlab/potion-retrieval-32M</code> on first use; the hash encoder is the
+          dependency-free fallback. Applies the next time the Totem server starts.
+        </p>
         {state.catalogStatus === 'error'
           ? (
             <p style={HELP_STYLE} role="status">

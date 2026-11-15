@@ -169,6 +169,24 @@ ${body}
 </content>`
 }
 
+/** Render a fresh file-state TLDR in place of the unchanged file body. */
+export function formatCachedOutput(
+  displayPath: string,
+  tldr: string,
+  symbols: { name: string; kind: string; signature?: string }[],
+  totalLines: number,
+): string {
+  const outline = symbols.length === 0
+    ? ''
+    : `\n<symbols>\n${symbols.slice(0, 24).map(symbol =>
+      `${symbol.kind} ${symbol.signature ?? symbol.name}`).join('\n')}\n</symbols>`
+  return `<path>${displayPath}</path>
+<type>file</type>
+<cached>fresh</cached>
+<tldr>${tldr}</tldr>${outline}
+<note>Full content is unchanged since this TLDR (${totalLines} lines). Pass force=true to read the body.</note>`
+}
+
 /**
  * Derive the persisted `lang` hint from a read path's file extension. The shared
  * table in `@deepseek-ai/dsh-util-code-language` owns the recognized suffixes and

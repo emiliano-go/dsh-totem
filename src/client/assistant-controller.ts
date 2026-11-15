@@ -45,6 +45,29 @@ export interface WatchRow {
   lastResult?: string
 }
 
+/** One contradictory memory pair retained for review. */
+export interface ConflictRow {
+  id: string
+  project: string
+  itemA: string
+  itemB: string
+  claimA: string
+  claimB: string
+  condition: string
+  options: string[]
+  recommended?: string
+  createdAt: string
+}
+
+/** Counts shown above the conflict inbox. */
+export interface MemorySummary {
+  staleItems: number
+  staleRatio: number
+  openConflicts: number
+  durable: number
+  total: number
+}
+
 /** The notification/config fields edited here. */
 export interface AssistantConfig {
   provider?: string
@@ -56,6 +79,10 @@ export interface AssistantConfig {
   telegramBotToken?: string
   telegramChatId?: string
   layaPassThreshold?: number
+  layaReviewBand?: number
+  layaVetoThreshold?: number
+  layaConfidenceFloor?: number
+  layaCalibrationFile?: string
   layaMaxRetries?: number
   layaTimeoutMs?: number
   layaStepChecks?: string
@@ -68,7 +95,14 @@ export interface AssistantConfig {
   layaQuestionsFile?: string
 }
 
-export type AssistantTab = 'memory' | 'candidates' | 'reminders' | 'watches' | 'notifications'
+export type AssistantTab =
+  | 'memory'
+  | 'candidates'
+  | 'conflicts'
+  | 'reminders'
+  | 'watches'
+  | 'notifications'
+  | 'laya'
 
 /** Snapshot rendered by the section. */
 export interface AssistantState {
@@ -77,6 +111,8 @@ export interface AssistantState {
   query: string
   memories: MemoryRow[]
   candidates: CandidateRow[]
+  conflicts: ConflictRow[]
+  conflictSummary: MemorySummary | null
   reminders: ReminderRow[]
   watches: WatchRow[]
   status: 'idle' | 'loading' | 'ready' | 'error'
@@ -96,6 +132,7 @@ export interface AssistantFace {
   refresh: () => void
   approve: (id: string) => void
   reject: (id: string) => void
+  resolveConflict: (id: string, resolution: string) => void
   snooze: (id: string, minutes: number) => void
   doneReminder: (id: string) => void
   cancelReminder: (id: string) => void
@@ -124,6 +161,8 @@ export class AssistantController {
   private query = ''
   private memories: MemoryRow[] = []
   private candidates: CandidateRow[] = []
+  private conflicts: ConflictRow[] = []
+  private conflictSummary: MemorySummary | null = null
   private reminders: ReminderRow[] = []
   private watches: WatchRow[] = []
   private status: AssistantState['status'] = 'idle'
@@ -158,6 +197,9 @@ export class AssistantController {
       refresh: () => { void this.refresh() },
       approve: id => { void this.action(`/candidates/${encodeURIComponent(id)}/approve`, 'Memory approved.') },
       reject: id => { void this.action(`/candidates/${encodeURIComponent(id)}/reject`, 'Candidate rejected.') },
+      resolveConflict: (id, resolution) => {
+        void this.action(`/conflicts/${encodeURIComponent(id)}/resolve`, 'Conflict resolved.', { resolution })
+      },
       snooze: (id, minutes) => { void this.action(`/reminders/${encodeURIComponent(id)}/snooze`, 'Reminder snoozed.', { minutes }) },
       doneReminder: id => { void this.action(`/reminders/${encodeURIComponent(id)}/done`, 'Reminder done.') },
       cancelReminder: id => { void this.action(`/reminders/${encodeURIComponent(id)}/cancel`, 'Reminder canceled.') },
@@ -185,6 +227,8 @@ export class AssistantController {
       query: this.query,
       memories: this.memories,
       candidates: this.candidates,
+      conflicts: this.conflicts,
+      conflictSummary: this.conflictSummary,
       reminders: this.reminders,
       watches: this.watches,
       status: this.status,
@@ -246,6 +290,13 @@ export class AssistantController {
       else if (this.tab === 'candidates') {
         const data = await this.request<{ items: CandidateRow[] }>('/candidates')
         this.candidates = data.items.filter(item => item.status === 'pending')
+      }
+      else if (this.tab === 'conflicts') {
+        const params = new URLSearchParams()
+        if (this.project.length > 0) params.set('project', this.project)
+        const data = await this.request<{ items: ConflictRow[]; summary?: MemorySummary }>(`/conflicts?${params.toString()}`)
+        this.conflicts = data.items
+        this.conflictSummary = data.summary ?? null
       } else if (this.tab === 'reminders') {
         const data = await this.request<{ items: ReminderRow[] }>('/reminders')
         this.reminders = data.items.filter(item => !item.done)
@@ -342,7 +393,8 @@ export class AssistantController {
   private async saveLaya(values: AssistantConfig): Promise<void> {
     const snapshot = this.form.getSnapshot()
     const fields: (keyof AssistantConfig)[] = [
-      'layaPassThreshold', 'layaMaxRetries', 'layaTimeoutMs', 'layaStepChecks', 'layaStepCadence',
+      'layaPassThreshold', 'layaReviewBand', 'layaVetoThreshold', 'layaConfidenceFloor', 'layaCalibrationFile',
+      'layaMaxRetries', 'layaTimeoutMs', 'layaStepChecks', 'layaStepCadence',
       'layaStepMaxFeedback', 'layaVerifyCommand', 'layaVerifyExternal', 'layaVerifyDisable',
       'layaModel', 'layaQuestionsFile',
     ]

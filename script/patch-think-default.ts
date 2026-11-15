@@ -1,13 +1,16 @@
 /**
- * Make assistant "Think" rows expanded by default in the installed dsh web client.
+ * Open selected rows by default in the installed dsh web client.
  *
- * dsh's chat client starts every disclosure collapsed. This patch adds an
- * `initiallyOpen` argument to the shared disclosure hook and passes it only
- * from ReasoningRow, leaving tool/process disclosures unchanged. It edits the
- * installed `@deepseek-ai/dsh-client-ui-chat/lib/client.js` because the row
- * component is not exposed through a replaceable slot.
+ * - Reasoning ("Think") rows start expanded.
+ * - Bash/PowerShell and file mutation (write/edit/apply_patch) rows start
+ *   expanded so the command and the changed text are visible immediately.
  *
- * Idempotent. A dsh upgrade/reinstall overwrites the file, so rerun this after
+ * dsh starts every disclosure collapsed. The shared disclosure hook accepts an
+ * `initiallyOpen` argument after this patch; only the rows above pass it.
+ * These components are not exposed through replaceable slots, so the installed
+ * package bundles are edited directly.
+ *
+ * Idempotent. A dsh upgrade/reinstall overwrites the files, so rerun this after
  * upgrading. Usage: bun run script/patch-think-default.ts
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
@@ -15,17 +18,34 @@ import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 
 const npmRoot = execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim()
-const file = join(npmRoot, '@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-chat/lib/client.js')
-if (!existsSync(file)) {
-  console.error(`not found: ${file}`)
-  process.exit(1)
+const dshModules = join(npmRoot, '@deepseek-ai/dsh/node_modules/@deepseek-ai')
+
+function patch(file: string, replacements: [string, string][], done: (source: string) => boolean): void {
+  if (!existsSync(file)) {
+    console.error(`not found: ${file}`)
+    process.exit(1)
+  }
+  const source = readFileSync(file, 'utf8')
+  if (done(source)) {
+    console.log(`already patched: ${file}`)
+    return
+  }
+  let next = source
+  for (const [before, after] of replacements) {
+    if (!next.includes(before)) {
+      console.error(`patch anchor missing in ${file} (dsh client changed?): ${before.slice(0, 60)}...`)
+      process.exit(1)
+    }
+    next = next.replace(before, after)
+  }
+  const backup = `${file}.bak-totem`
+  if (!existsSync(backup)) writeFileSync(backup, source)
+  writeFileSync(file, next)
+  console.log(`patched ${file}`)
 }
-const source = readFileSync(file, 'utf8')
-if (source.includes('useDisclosure(true)')) {
-  console.log('already patched')
-  process.exit(0)
-}
-const replacements: [string, string][] = [
+
+const chat = join(dshModules, 'dsh-client-ui-chat/lib/client.js')
+patch(chat, [
   [
     '\t\tfunction useDisclosure(version = 0) {\n\t\t\tconst [expandedVersion, setExpandedVersion] = (0, react.useState)(null);',
     '\t\tfunction useDisclosure(version = 0, initiallyOpen = false) {\n\t\t\tconst [expandedVersion, setExpandedVersion] = (0, react.useState)(() => initiallyOpen ? version : null);',
@@ -38,16 +58,13 @@ const replacements: [string, string][] = [
     'const { expanded, toggle } = useDisclosure();',
     'const { expanded, toggle } = useDisclosure(true);',
   ],
-]
-let next = source
-for (const [before, after] of replacements) {
-  if (!next.includes(before)) {
-    console.error(`patch anchor missing (dsh client changed?): ${before.slice(0, 60)}...`)
-    process.exit(1)
-  }
-  next = next.replace(before, after)
-}
-const backup = `${file}.bak-totem`
-if (!existsSync(backup)) writeFileSync(backup, source)
-writeFileSync(file, next)
-console.log(`patched ${file}`)
+], source => source.includes('function useDisclosure(version = 0, initiallyOpen = false)')
+  && source.includes('const { expanded, toggle } = useDisclosure(true);'))
+
+const tool = join(dshModules, 'dsh-client-ui-tool/lib/client.js')
+patch(tool, [
+  [
+    'const { expanded, toggle: toggleExpand } = useDisclosure();',
+    'const { expanded, toggle: toggleExpand } = useDisclosure(toolName === "bash" || toolName === "pwsh" || toolName === "write" || toolName === "edit" || toolName === "apply_patch");',
+  ],
+], source => source.includes('const { expanded, toggle: toggleExpand } = useDisclosure(toolName ==='))

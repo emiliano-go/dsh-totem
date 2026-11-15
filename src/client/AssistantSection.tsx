@@ -7,6 +7,7 @@ import type { AssistantFace, AssistantState, AssistantTab } from './assistant-co
 const TABS: { id: AssistantTab; label: string }[] = [
   { id: 'memory', label: 'Memory' },
   { id: 'candidates', label: 'Candidates' },
+  { id: 'conflicts', label: 'Conflicts' },
   { id: 'reminders', label: 'Reminders' },
   { id: 'watches', label: 'Watches' },
   { id: 'notifications', label: 'Notifications' },
@@ -62,6 +63,10 @@ export function AssistantSection(props: AssistantSectionProps) {
   const [watch, setWatch] = useState({ kind: 'page', url: '', condition: '', interval: '15' })
   const [laya, setLaya] = useState({
     passThreshold: String(state.config.layaPassThreshold ?? 0.65),
+    reviewBand: String(state.config.layaReviewBand ?? 0.05),
+    vetoThreshold: String(state.config.layaVetoThreshold ?? 0.5),
+    confidenceFloor: String(state.config.layaConfidenceFloor ?? 0),
+    calibrationFile: state.config.layaCalibrationFile ?? '',
     maxRetries: String(state.config.layaMaxRetries ?? 1),
     timeoutMs: String(state.config.layaTimeoutMs ?? 60000),
     stepChecks: state.config.layaStepChecks ?? 'veto',
@@ -84,6 +89,10 @@ export function AssistantSection(props: AssistantSectionProps) {
     })
     setLaya({
       passThreshold: String(state.config.layaPassThreshold ?? 0.65),
+    reviewBand: String(state.config.layaReviewBand ?? 0.05),
+    vetoThreshold: String(state.config.layaVetoThreshold ?? 0.5),
+    confidenceFloor: String(state.config.layaConfidenceFloor ?? 0),
+    calibrationFile: state.config.layaCalibrationFile ?? '',
       maxRetries: String(state.config.layaMaxRetries ?? 1),
       timeoutMs: String(state.config.layaTimeoutMs ?? 60000),
       stepChecks: state.config.layaStepChecks ?? 'veto',
@@ -164,6 +173,37 @@ export function AssistantSection(props: AssistantSectionProps) {
                   <div style={ROW_ACTIONS}>
                     <Button variant="primary" onClick={() => { props.approve(candidate.id) }} disabled={state.writing}>Approve</Button>
                     <Button variant="ghost" onClick={() => { props.reject(candidate.id) }} disabled={state.writing}>Reject</Button>
+                  </div>
+                </div>
+              ))}
+          </div>
+        )
+        : null}
+
+      {state.tab === 'conflicts'
+        ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={MUTED}>Contradictions detected when a memory was written. Resolving one records a contradiction between the pair and, when you keep a side, supersedes the other memory.</p>
+            {state.conflictSummary === null
+              ? null
+              : (
+                <p style={MUTED}>
+                  {state.conflictSummary.total} memories · {state.conflictSummary.durable} durable ·{' '}
+                  {state.conflictSummary.staleItems} with stale evidence ({Math.round(state.conflictSummary.staleRatio * 100)}%)
+                </p>
+              )}
+            {state.conflicts.length === 0
+              ? <p style={MUTED}>{state.status === 'loading' ? 'Loading…' : 'No open conflicts.'}</p>
+              : state.conflicts.map(conflict => (
+                <div key={conflict.id} style={CARD}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{conflict.condition || 'Conflicting claims'}</div>
+                  <div style={{ fontSize: 13 }}>A: {conflict.claimA || conflict.itemA}</div>
+                  <div style={{ fontSize: 13 }}>B: {conflict.claimB || conflict.itemB}</div>
+                  <p style={MUTED}>{conflict.itemA.slice(0, 8)} · {conflict.itemB.slice(0, 8)} · {new Date(conflict.createdAt).toLocaleString()}</p>
+                  <div style={ROW_ACTIONS}>
+                    <Button variant="primary" onClick={() => { props.resolveConflict(conflict.id, 'keep-a') }} disabled={state.writing}>Keep A</Button>
+                    <Button variant="primary" onClick={() => { props.resolveConflict(conflict.id, 'keep-b') }} disabled={state.writing}>Keep B</Button>
+                    <Button variant="ghost" onClick={() => { props.resolveConflict(conflict.id, 'both') }} disabled={state.writing}>Keep both</Button>
                   </div>
                 </div>
               ))}
@@ -265,6 +305,20 @@ export function AssistantSection(props: AssistantSectionProps) {
             </div>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 160 }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Review band</span>
+                <input style={FIELD} value={laya.reviewBand} onChange={event => { setLaya({ ...laya, reviewBand: event.target.value }) }} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 160 }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Veto threshold</span>
+                <input style={FIELD} value={laya.vetoThreshold} onChange={event => { setLaya({ ...laya, vetoThreshold: event.target.value }) }} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 160 }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Confidence floor</span>
+                <input style={FIELD} value={laya.confidenceFloor} onChange={event => { setLaya({ ...laya, confidenceFloor: event.target.value }) }} />
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 160 }}>
                 <span style={{ fontSize: 12, fontWeight: 600 }}>Step checks</span>
                 <select style={FIELD} value={laya.stepChecks} onChange={event => { setLaya({ ...laya, stepChecks: event.target.value }) }}>
                   <option value="off">off</option>
@@ -310,6 +364,10 @@ export function AssistantSection(props: AssistantSectionProps) {
                 <span style={{ fontSize: 12, fontWeight: 600 }}>Questions file (optional)</span>
                 <input style={FIELD} value={laya.questionsFile} onChange={event => { setLaya({ ...laya, questionsFile: event.target.value }) }} />
               </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 280px' }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Calibration file (optional)</span>
+                <input style={FIELD} placeholder=".encoder/decision.calibration.json" value={laya.calibrationFile} onChange={event => { setLaya({ ...laya, calibrationFile: event.target.value }) }} />
+              </label>
             </div>
             <div style={ROW_ACTIONS}>
               <Button
@@ -318,6 +376,10 @@ export function AssistantSection(props: AssistantSectionProps) {
                 onClick={() => {
                   props.saveLaya({
                     layaPassThreshold: Number(laya.passThreshold),
+                    layaReviewBand: Number(laya.reviewBand),
+                    layaVetoThreshold: Number(laya.vetoThreshold),
+                    layaConfidenceFloor: Number(laya.confidenceFloor),
+                    layaCalibrationFile: laya.calibrationFile,
                     layaMaxRetries: Number(laya.maxRetries),
                     layaTimeoutMs: Number(laya.timeoutMs),
                     layaStepChecks: laya.stepChecks,

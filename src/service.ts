@@ -4,7 +4,7 @@
  *
  * @module dsh-totem/service
  */
-import { basename, join } from 'node:path'
+import { basename, isAbsolute, join, relative } from 'node:path'
 import { existsSync } from 'node:fs'
 import { mkdir, symlink } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -13,7 +13,7 @@ import type { Context, Volatile } from '@deepseek-ai/cordis'
 import { Service } from '@deepseek-ai/cordis'
 import { Client } from '@modelcontextprotocol/client'
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
-import { distillAuthored, distillMemory, type DistillTarget, type MemoryDraft } from './distill.ts'
+import { distillAuthored, distillMemory, distillSession, type DistillTarget, type MemoryDraft } from './distill.ts'
 
 /** Resolved plugin configuration shared by every entry point. */
 export interface TotemConfig {
@@ -33,6 +33,8 @@ export interface TotemConfig {
   readRegister: boolean
   /** Register memories after successful file writes/edits/patches. */
   autoRegister: boolean
+  /** Serve a fresh file TLDR instead of the full body on a whole-file read. */
+  preferFileContext: boolean
   /** Let the secondary model author memory prose. */
   distill: boolean
   /** Inject a recent-memory digest at the first step of a session. */
@@ -61,6 +63,10 @@ export interface TotemConfig {
   distillTurn: Volatile<boolean>
   /** Minimum assistant text length for turn distillation. */
   distillTurnMinChars: Volatile<number>
+  /** Check and update the Totem extraction coverage ledger. */
+  coverage: Volatile<boolean>
+  /** Expand multi-hop recall with model-generated clue queries. */
+  clues: Volatile<boolean>
   /** Allow watches to fetch loopback/private addresses. */
   watchAllowPrivate: Volatile<boolean>
 }
@@ -77,6 +83,23 @@ export interface FileTouch {
   startLine?: number
   endLine?: number
   signal?: AbortSignal
+}
+
+/** One cached file-state TLDR returned before a full read. */
+export interface CachedFileContext {
+  id: string
+  path: string
+  title?: string
+  tldr: string
+  language?: string
+  lineCount?: number
+  byteCount?: number
+  symbols?: { name: string; kind: string; signature?: string; detail?: string }[]
+  blobHash: string
+  fresh: true
+  changed?: boolean
+  created?: boolean
+  updatedAt?: string
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -117,6 +140,10 @@ export class TotemService extends Service {
   private client: Client | undefined
   private connecting: Promise<Client> | undefined
   private readonly initialized = new Set<string>()
+  /** Resolved project per session, so a subagent can inherit its parent's. */
+  private readonly projects = new Map<string, string>()
+  /** Explicit project per child session, set when a delegation is published. */
+  private readonly overrides = new Map<string, string>()
   private lastProjectPath = ''
 
   constructor(ctx: Context, readonly config: TotemConfig) {
@@ -155,6 +182,29 @@ export class TotemService extends Service {
     return this.lastProjectPath
   }
 
+  /** Project already resolved for one session, if any. */
+  projectOf(sessionId: string): string | undefined {
+    return this.projects.get(sessionId) ?? this.overrides.get(sessionId)
+  }
+
+  /**
+   * Pin one child session to a project.
+   *
+   * A delegated agent that works in a worktree or a temporary directory would
+   * otherwise write its memories into a second, near-empty store and the parent
+   * session would never see what the child learned.
+   */
+  overrideProject(sessionId: string, project: string): void {
+    if (sessionId.length === 0 || project.length === 0) return
+    this.overrides.set(sessionId, project)
+  }
+
+  /** Drop a session's project state when it can no longer run. */
+  clearProject(sessionId: string): void {
+    this.projects.delete(sessionId)
+    this.overrides.delete(sessionId)
+  }
+
   /** Stable pseudo-project whose `.totem/totem.db` is the global user memory DB. */
   async userProject(): Promise<string> {
     const dir = statePath('user')
@@ -172,11 +222,14 @@ export class TotemService extends Service {
 
   /** Resolve the project root Totem should use for a tool execution. */
   async projectFor(agent: unknown, signal?: AbortSignal): Promise<string> {
-    const project = agent === undefined
+    const sessionId = (agent as { session?: { id?: string } } | undefined)?.session?.id ?? ''
+    const pinned = sessionId.length > 0 ? this.overrides.get(sessionId) : undefined
+    const project = pinned ?? (agent === undefined
       ? process.cwd()
-      : await this.ctx.workingDirectory.ensure(agent, signal).catch(() => process.cwd())
+      : await this.ctx.workingDirectory.ensure(agent, signal).catch(() => process.cwd()))
     await this.ensureProject(project, signal)
     this.lastProjectPath = project
+    if (sessionId.length > 0) this.projects.set(sessionId, project)
     return project
   }
 
@@ -252,6 +305,29 @@ export class TotemService extends Service {
     console.warn(`[dsh-totem] ${where}:`, error instanceof Error ? error.message : error)
   }
 
+  /** One cached file TLDR for a whole-file read, or undefined when unavailable. */
+  async cachedRead(input: {
+    path: string
+    agent?: unknown
+    signal?: AbortSignal
+  }): Promise<CachedFileContext | undefined> {
+    if (!this.config.preferFileContext) return undefined
+    try {
+      const project = await this.projectFor(input.agent, input.signal)
+      const result = await this.call('memory_file_context_tool', {
+        path: input.path,
+        refresh: false,
+        project,
+      }, input.signal)
+      if (typeof result !== 'object' || result === null) return undefined
+      const context = result as CachedFileContext
+      return context.fresh === true ? context : undefined
+    } catch (error) {
+      this.warn('cachedRead', error)
+      return undefined
+    }
+  }
+
   /**
    * Record a successful file read. Deterministic and cheap: no model call.
    */
@@ -259,14 +335,10 @@ export class TotemService extends Service {
     if (!this.config.autoRegister || !this.config.readRegister) return
     try {
       const project = await this.projectFor(touch.agent, touch.signal)
-      const name = basename(touch.path)
-      await this.call('register_file_read_tool', withoutUndefined({
+      await this.call('memory_file_context_tool', withoutUndefined({
         path: touch.path,
-        statement: `Read ${name}${touch.symbol === undefined ? '' : ` (${touch.symbol})`}`,
-        subject: touch.symbol ?? name,
-        kind: touch.symbol === undefined ? 'module' : 'function',
-        tags: ['implementation', 'read'],
-        symbol: touch.symbol,
+        reason: 'read',
+        tags: ['read'],
         project,
       }), touch.signal)
     } catch (error) {
@@ -299,25 +371,19 @@ export class TotemService extends Service {
     try {
       const draft = await this.draft(touch)
       const name = basename(touch.path)
-      const statement = draft?.statement ?? `${touch.action === 'patch' ? 'Patched' : 'Changed'} ${name}`
       const reason = draft?.reason ?? 'Agent code change'
-      const tags = ['implementation', ...draft?.tags ?? []]
       const project = await this.projectFor(touch.agent, touch.signal)
-      await this.call('register_file_write_tool', withoutUndefined({
+      await this.call('memory_file_context_tool', withoutUndefined({
         path: touch.path,
-        statement,
         reason,
-        tags,
-        title: draft?.title,
-        details: draft?.details,
-        symbol: touch.symbol,
+        tags: draft?.tags,
         project,
       }), touch.signal)
       for (const signature of draft?.signatures ?? []) {
         await this.call('memory_create_tool', withoutUndefined({
           type: 'implementation',
           title: `${signature.name} — ${name}`,
-          statement: signature.statement ?? statement,
+          statement: signature.statement ?? `Defines ${signature.name} in ${name}.`,
           tags: ['implementation', `path:${touch.path}`, `symbol:${signature.name}`],
           details: signature.signature,
           metadata: {
@@ -332,6 +398,60 @@ export class TotemService extends Service {
       }
     } catch (error) {
       this.warn('recordWrite', error)
+    }
+  }
+
+  /**
+   * Create or update one summary for the work done in this session.
+   * Skipped when the model cannot produce a concise summary.
+   */
+  async recordSessionSummary(input: {
+    project: string
+    sessionId: string
+    text: string
+    changes: { path: string; tool: string }[]
+    checks?: { command: string; cwd?: string; exitCode: number; output: string }[]
+  }): Promise<void> {
+    const files = [...new Set(input.changes.map((change) => {
+      if (!isAbsolute(change.path)) return change.path.replaceAll('\\', '/')
+      const rel = relative(input.project, change.path).replaceAll('\\', '/')
+      return rel.startsWith('..') ? change.path.replaceAll('\\', '/') : rel
+    }).filter(Boolean))]
+    const tools = [...new Set(input.changes.map(change => change.tool))]
+    if (files.length === 0 || input.text.trim().length < 200) return
+    const target = this.target()
+    if (target === undefined) return
+    try {
+      const summary = await distillSession(this.ctx, target, {
+        project: input.project,
+        assistantText: input.text,
+        files,
+        tools,
+      })
+      if (summary === undefined) return
+      const created = await this.call('memory_session_summary_tool', {
+        session_id: input.sessionId,
+        summary,
+        files,
+        tools,
+        project: input.project,
+      }) as { id?: unknown } | null
+      const id = typeof created?.id === 'string' ? created.id : undefined
+      if (id !== undefined) {
+        for (const check of input.checks ?? []) {
+          await this.call('memory_check_record_tool', {
+            id,
+            name: check.command.slice(0, 200),
+            command: check.command,
+            ...check.cwd === undefined ? {} : { cwd: check.cwd },
+            exit_code: check.exitCode,
+            output: check.output.slice(0, 4000),
+            ran_at: new Date().toISOString(),
+          })
+        }
+      }
+    } catch (error) {
+      this.warn('recordSessionSummary', error)
     }
   }
 

@@ -15,7 +15,7 @@ const CANDIDATES = JSON.stringify([{
 const config: TotemConfig = {
   command: 'totem-mcp', args: [], env: {},
   provider: { get: () => 'test' } as any, model: { get: () => 'test' } as any,
-  readRegister: true, autoRegister: true, distill: true, digest: true,
+  readRegister: true, autoRegister: true, preferFileContext: true, distill: true, digest: true,
   maxTokens: 128, maxInputBytes: 4096, timeoutMs: 20000, debug: false,
   apiToken: { get: () => '' } as any,
   ntfyUrl: { get: () => '' } as any, ntfyTopic: { get: () => '' } as any, ntfyToken: { get: () => '' } as any,

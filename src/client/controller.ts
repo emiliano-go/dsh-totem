@@ -14,6 +14,7 @@ import type { SettingsFormScope, SettingsFormShell } from '@deepseek-ai/dsh-clie
 export interface TotemMemorySettings {
   provider?: string
   model?: string
+  embeddingBackend?: string
 }
 
 /** State rendered by the memory-model card. */
@@ -22,6 +23,10 @@ export interface TotemMemoryCardState extends SettingsFormShell {
   current: string
   /** Route staged in the card; `''` means the deployment default. */
   requested: string
+  /** Encoder stored in the settings row. */
+  currentBackend: string
+  /** Encoder staged in the card. */
+  requestedBackend: string
   /** Provider groups from the Host model catalog. */
   groups: readonly ModelProviderGroup[]
   /** Providers whose catalog could not be read. */
@@ -42,6 +47,8 @@ export interface TotemMemoryCardFace {
   }
   /** Stage one route key; `''` selects the deployment default. */
   select: (key: string) => void
+  /** Stage the retrieval encoder. */
+  selectBackend: (value: string) => void
   /** Persist the staged route. */
   save: () => void
   /** Drop the staged route. */
@@ -71,12 +78,20 @@ function storedRoute(value: TotemMemorySettings | undefined): string {
   return provider.length > 0 && model.length > 0 ? routeKey(provider, model) : ''
 }
 
+const EMBEDDING_BACKENDS = ['auto', 'hash', 'model2vec'] as const
+
+function storedBackend(value: TotemMemorySettings | undefined): string {
+  const backend = typeof value?.embeddingBackend === 'string' ? value.embeddingBackend.trim() : ''
+  return (EMBEDDING_BACKENDS as readonly string[]).includes(backend) ? backend : 'auto'
+}
+
 /** Bridges the `totem` settings form and the live model catalog onto a staged card. */
 export class TotemMemoryCardController {
   private groups: readonly ModelProviderGroup[] = []
   private failures: readonly ModelCatalogFailure[] = []
   private catalogStatus: TotemMemoryCardState['catalogStatus'] = 'idle'
   private draft: string | undefined
+  private draftBackend: string | undefined
   private draftRevision: number | undefined
   private saving = false
   private failed = false
@@ -99,8 +114,12 @@ export class TotemMemoryCardController {
     this.store = createSnapshotStore(this.projection())
     this.unsubscribe = scope.subscribe(() => {
       const snapshot = this.scope.getSnapshot()
-      if (!this.saving && this.draft !== undefined && snapshot.revision !== this.draftRevision) {
-        if (storedRoute(snapshot.value) === this.draft) this.clearDraft()
+      const dirty = this.draft !== undefined || this.draftBackend !== undefined
+      if (!this.saving && dirty && snapshot.revision !== this.draftRevision) {
+        const sameRoute = this.draft === undefined || storedRoute(snapshot.value) === this.draft
+        const sameBackend = this.draftBackend === undefined
+          || storedBackend(snapshot.value) === this.draftBackend
+        if (sameRoute && sameBackend) this.clearDraft()
         else this.conflicted = true
       }
       this.publish()
@@ -121,6 +140,7 @@ export class TotemMemoryCardController {
     return {
       hooks: { totemMemoryCard: this.store },
       select: key => { this.select(key) },
+      selectBackend: value => { this.selectBackend(value) },
       save: () => { void this.save() },
       discard: () => { this.discard() },
       retryCatalog: () => { void this.loadCatalog() },
@@ -139,8 +159,16 @@ export class TotemMemoryCardController {
     return storedRoute(this.scope.getSnapshot().value)
   }
 
+  private currentBackend(): string {
+    return storedBackend(this.scope.getSnapshot().value)
+  }
+
   private requested(): string {
     return this.draft ?? this.current()
+  }
+
+  private requestedBackend(): string {
+    return this.draftBackend ?? this.currentBackend()
   }
 
   private select(key: string): void {
@@ -148,6 +176,19 @@ export class TotemMemoryCardController {
     if (this.disposed || snapshot.status !== 'ready' || !snapshot.writable || this.saving) return
     if (this.draft === undefined) this.draftRevision = snapshot.revision
     this.draft = key
+    this.failed = false
+    this.conflicted = false
+    this.publish()
+  }
+
+  private selectBackend(value: string): void {
+    const snapshot = this.scope.getSnapshot()
+    if (this.disposed || snapshot.status !== 'ready' || !snapshot.writable || this.saving) return
+    if (!(EMBEDDING_BACKENDS as readonly string[]).includes(value)) return
+    if (this.draft === undefined && this.draftBackend === undefined) {
+      this.draftRevision = snapshot.revision
+    }
+    this.draftBackend = value
     this.failed = false
     this.conflicted = false
     this.publish()
@@ -161,6 +202,7 @@ export class TotemMemoryCardController {
 
   private clearDraft(): void {
     this.draft = undefined
+    this.draftBackend = undefined
     this.draftRevision = undefined
     this.failed = false
     this.conflicted = false
@@ -169,9 +211,11 @@ export class TotemMemoryCardController {
   private async save(): Promise<void> {
     const snapshot = this.scope.getSnapshot()
     const desired = this.requested()
+    const desiredBackend = this.requestedBackend()
     if (this.disposed || snapshot.status !== 'ready' || !snapshot.writable || this.saving
-      || desired === this.current()) return
-    if (this.draft !== undefined && snapshot.revision !== this.draftRevision) {
+      || (desired === this.current() && desiredBackend === this.currentBackend())) return
+    const staged = this.draft !== undefined || this.draftBackend !== undefined
+    if (staged && snapshot.revision !== this.draftRevision) {
       this.conflicted = true
       this.publish()
       return
@@ -185,9 +229,11 @@ export class TotemMemoryCardController {
     await this.scope.mutate([
       { op: 'set', path: ['provider'], value: route.provider },
       { op: 'set', path: ['model'], value: route.model },
+      { op: 'set', path: ['embeddingBackend'], value: desiredBackend },
     ], this.draftRevision)
     if (generation !== this.saveGeneration) return
     const landed = this.current() === desired
+      && this.currentBackend() === desiredBackend
     this.saving = false
     this.failed = !landed
     if (landed) this.clearDraft()
@@ -215,15 +261,19 @@ export class TotemMemoryCardController {
     const snapshot = this.scope.getSnapshot()
     const current = this.current()
     const requested = this.requested()
+    const currentBackend = this.currentBackend()
+    const requestedBackend = this.requestedBackend()
     return {
       available: snapshot.status === 'ready',
       writable: snapshot.writable,
-      dirty: current !== requested,
+      dirty: current !== requested || currentBackend !== requestedBackend,
       invalid: requested !== '' && requested !== current && !this.known(requested),
       saving: this.saving,
       failed: this.failed,
       current,
       requested,
+      currentBackend,
+      requestedBackend,
       groups: this.groups,
       failures: this.failures,
       catalogStatus: this.catalogStatus,

@@ -8,7 +8,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, ReadResultView, ToolResult } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-fs'
-import { buildWindow, formatReadOutput, langFromPath, readMetaFromMeta } from './read-render.ts'
+import { buildWindow, formatCachedOutput, formatReadOutput, langFromPath, readMetaFromMeta } from './read-render.ts'
 import { resolveRegularReadTarget } from './read-target.ts'
 
 /** Default and maximum number of lines returned by one `read` call (the `readLimit` config). */
@@ -81,6 +81,7 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
       file_path: { type: 'string', required: true, description: 'Path to read, resolved by the filesystem backend.' },
       offset: { type: 'number', description: '1-based first line to return. Defaults to 1.' },
       limit: { type: 'number', description: `Maximum number of lines to return. Defaults to ${caps.limit}.` },
+      force: { type: 'boolean', description: 'Read the full body even when a fresh file TLDR is available.' },
       memory: {
         type: 'object', additionalProperties: false, required: true,
         description: 'REQUIRED. Mark this read for Totem memory registration; the secondary memory model writes the durable text.',
@@ -110,9 +111,31 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
             },
           },
           totalLines: { type: 'integer', required: true },
+          cached: { type: 'boolean', description: 'True when a fresh file TLDR replaced an unchanged body.' },
+          tldr: { type: 'string', description: 'Cached file-state TLDR.' },
+          symbols: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                name: { type: 'string', required: true },
+                kind: { type: 'string', required: true },
+                signature: { type: 'string' },
+              },
+            },
+          },
         },
       },
       render: (args, value) => {
+        if (value.cached === true) {
+          return [{
+            type: 'text',
+            text: formatCachedOutput(
+              value.path, value.tldr ?? '', value.symbols ?? [], value.totalLines,
+            ),
+          }]
+        }
         const input = parseReadArgs(args, caps.limit)
         const endLine = value.lines.at(-1)?.number ?? Math.max(0, value.offset - 1)
         const truncatedByBytes = value.lines.length < input.limit && endLine < value.totalLines
@@ -148,6 +171,30 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
         throw new ToolArgsError(['memory is required; pass { kind: "register", symbol?: "<name>" }'])
       }
       const input = parseReadArgs(args, caps.limit)
+      const force = (args as { force?: boolean }).force === true
+      const totem = ctx.get('totem') as {
+        recordRead?: (touch: unknown) => Promise<void>
+        cachedRead?: (input: { path: string; agent?: unknown; signal?: AbortSignal }) => Promise<{
+          id: string; path: string; tldr: string; lineCount?: number
+          symbols?: { name: string; kind: string; signature?: string }[]
+        } | undefined>
+      } | undefined
+      if (!force && input.offset === 1 && input.limit === caps.limit && totem?.cachedRead !== undefined) {
+        const cached = await totem.cachedRead({
+          path: input.filePath, agent: exec.agent, signal: exec.signal,
+        })
+        if (cached !== undefined) {
+          return {
+            path: cached.path,
+            offset: 1,
+            lines: [],
+            totalLines: cached.lineCount ?? 0,
+            cached: true,
+            tldr: cached.tldr,
+            symbols: cached.symbols ?? [],
+          }
+        }
+      }
       // One stat: absence observation OR type check + size routing + present version.
       // A concurrent write can only make a later guarded mutation fail stale and require reread.
       const { target, info } = await resolveRegularReadTarget(ctx, exec, input.filePath)
@@ -173,7 +220,6 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
       // read already succeeded; an fs/observed listener is contractually a
       // synchronous, side-effect-only recorder.
       ctx.emit('fs/observed', target, { kind: 'present', version: info.version }, exec)
-      const totem = ctx.get('totem') as { recordRead?: (touch: unknown) => Promise<void> } | undefined
       if (totem?.recordRead !== undefined) {
         await totem.recordRead({
           agent: exec.agent, path: outcome.path, tool: 'read', action: 'read',

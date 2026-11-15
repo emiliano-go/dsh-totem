@@ -1,6 +1,8 @@
 // Deterministic verify lane: high-precision rules over the turn's tool calls
 // and outputs. Any high-severity finding vetoes the turn regardless of the
 // decision engine's verdict. External scanners are added in a later step.
+import { isGeneratedPath, isTestPath } from './paths.ts'
+
 export interface VerifyChange {
   readonly tool: string
   readonly input: string
@@ -56,6 +58,15 @@ const DESTRUCTIVE_PATTERNS: { severity: "high" | "medium"; re: RegExp; label: st
   { severity: "high", re: /\bchmod\s+(?:-R\s+)?777\b/, label: "chmod 777" },
   { severity: "high", re: /git\s+push[^\n]*--force[^\n]*\b(?:main|master)\b/, label: "force push to main" },
   { severity: "medium", re: /\bDROP\s+TABLE\b/i, label: "DROP TABLE" },
+]
+
+// Scope creep visible without the task text: repo-wide formatting and bulk
+// mechanical rewrites. Narrow, high-precision signals only.
+const SCOPE_PATTERNS: { re: RegExp; label: string }[] = [
+  { re: /\b(?:prettier|eslint|ruff|black|gofmt|rustfmt|clang-format)\b[^\n]*(?:--write|--fix|\s-w\b)[^\n]*\s(?:\.|\*)(?:\s|$)/i, label: "repo-wide formatter" },
+  { re: /\b(?:rewrote|reformatted)\s+\d+\s+lines?\b/i, label: "bulk rewrite" },
+  { re: /\bupdated\s+\d+\s+call\s+sites?\b/i, label: "bulk call-site update" },
+  { re: /\bacross\s+\d+\s+files?\b/i, label: "multi-file rewrite" },
 ]
 
 const TEST_MARKERS = /ran \d+ tests?|test session starts|test suites?:|\d+ passing|\d+ failing|\d+ passed/i
@@ -204,6 +215,10 @@ export function verifyChanges(changes: readonly VerifyChange[], options: VerifyO
   const findings: VerifyFinding[] = []
 
   for (const change of changes) {
+    const path = change.paths?.[0] ?? ""
+    // A sourcemap or bundle embeds the rule patterns themselves; judging it
+    // reports the scanner as the defect.
+    if (isGeneratedPath(path)) continue
     if (!disabled.has("secret-hardcoded")) findings.push(...scan(change, SECRET_PATTERNS, "secret-hardcoded", "high"))
     if (!disabled.has("sql-or-code-injection")) {
       findings.push(...scan(change, INJECTION_PATTERNS, "sql-or-code-injection", "high"))
@@ -221,6 +236,13 @@ export function verifyChanges(changes: readonly VerifyChange[], options: VerifyO
     }
     if (!disabled.has("test-weakened")) {
       findings.push(...testWeakening(change))
+    }
+    // Scope prose is pattern-matched text, and a test fixture legitimately
+    // contains claims about bulk edits, so test paths are excluded.
+    if (!disabled.has("scope-unrelated") && !isTestPath(path)) {
+      for (const entry of SCOPE_PATTERNS) {
+        findings.push(...scan(change, [entry.re], "scope-unrelated", "high", entry.label))
+      }
     }
   }
 
