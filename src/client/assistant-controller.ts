@@ -104,6 +104,28 @@ export type AssistantTab =
   | 'notifications'
   | 'laya'
 
+/** One ranked hunk from the manual localization route. */
+export interface LayaHunk {
+  index: number
+  header: string
+  added: string[]
+  score: number
+}
+
+/** Result of ranking a diff with Laya. */
+export interface LayaLocalizeResult {
+  top: number | null
+  hunks: LayaHunk[]
+  ms: number
+}
+
+/** Latest recorded turn changes, for the "use last turn diff" action. */
+export interface LayaLastDiff {
+  task: string
+  diff: string
+  changes: unknown[]
+}
+
 /** Snapshot rendered by the section. */
 export interface AssistantState {
   tab: AssistantTab
@@ -142,6 +164,8 @@ export interface AssistantFace {
   saveConfig: (values: AssistantConfig) => void
   saveLaya: (values: AssistantConfig) => void
   testNotification: () => void
+  localize: (task: string, diff: string) => Promise<LayaLocalizeResult>
+  lastDiff: () => Promise<LayaLastDiff | null>
 }
 
 function asArray(value: unknown): unknown[] {
@@ -209,6 +233,8 @@ export class AssistantController {
       saveConfig: values => { void this.saveConfig(values) },
       saveLaya: values => { void this.saveLaya(values) },
       testNotification: () => { void this.testNotification() },
+      localize: (task, diff) => this.localize(task, diff),
+      lastDiff: () => this.lastDiff(),
     }
   }
 
@@ -344,6 +370,20 @@ export class AssistantController {
       this.writing = false
       this.publish()
     }
+  }
+
+  /** Rank diff hunks manually; this never records a decision or steers. */
+  private localize(task: string, diff: string): Promise<LayaLocalizeResult> {
+    return this.request('/laya/localize', {
+      method: 'POST',
+      body: JSON.stringify({ task, diff }),
+    })
+  }
+
+  /** Latest recorded turn changes, or null when no call has changes. */
+  private async lastDiff(): Promise<LayaLastDiff | null> {
+    const data = await this.request<{ diff: LayaLastDiff | null }>('/laya/last-diff')
+    return data.diff
   }
 
   private async addWatch(draft: { kind: string; url: string; condition: string; interval: string }): Promise<void> {

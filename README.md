@@ -350,7 +350,10 @@ The `totem` plugin can run the custom Laya judge locally:
   returns `{top, hunks: [{index, header, added, score}], ms}`. It is a manual
   narrowing probe: it never records a decision and never steers, and it works
   while the automatic gate is disabled as long as the shared server is healthy.
-  With Laya enabled, the `laya_localize` tool exposes the same call to the agent.
+  The **Laya → Narrow a diff** panel in the Assistant settings tab exposes it:
+  paste a diff, or click **Use last turn diff** to load the newest recorded
+  turn's changes. With Laya enabled, the `laya_localize` tool exposes the same
+  call to the agent.
 - **Assistant → Laya tab**: pass threshold, review band, veto threshold,
   confidence floor, retries, step checks/cadence/budget, verify command, external
   scanners, disabled rules, model path, questions file, calibration file.

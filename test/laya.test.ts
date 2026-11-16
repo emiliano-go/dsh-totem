@@ -168,6 +168,18 @@ test('a clear pass is not downgraded by low confidence', () => {
   expect(outcome.reviewOnly).toBeUndefined()
 })
 
+test('lastLocalizeInput returns the latest recorded changed turn', () => {
+  const engine = Object.create(LayaEngine.prototype) as LayaEngine & { calls: unknown[] }
+  engine.calls = [
+    { id: 1, ts: 't', kind: 'mutation', authoritative: true, task: 'first', state: { task: 'first', changes: [{ tool: 'apply_patch', path: 'a.py', input: '@@ -1 +1 @@\n-x\n+y', output: 'applied' }] }, questions: {}, answers: {}, verdict: 'pass', composite: 0.9, margin: 0.2, threshold: 0.65, missing: [], vetoes: [], findings: [], ms: 1 },
+    { id: 2, ts: 't', kind: 'answer', authoritative: true, task: 'latest', state: { task: 'latest', changes: [] }, questions: {}, answers: {}, verdict: 'pass', composite: 0.9, margin: 0.2, threshold: 0.65, missing: [], vetoes: [], findings: [], ms: 1 },
+  ]
+  const input = engine.lastLocalizeInput()
+  expect(input?.task).toBe('first')
+  expect(input?.diff).toContain('+y')
+  expect(input?.changes).toHaveLength(1)
+})
+
 test('splitDiffHunks and rankLocalization narrow a diff', () => {
   const diff = [
     'diff --git a/a.py b/a.py',

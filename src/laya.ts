@@ -702,6 +702,22 @@ export class LayaEngine {
     return undefined
   }
 
+  /**
+   * Latest recorded turn with changed files, for the settings "use last turn
+   * diff" action. Returns the task, unified diff, and the canonical changes.
+   */
+  lastLocalizeInput(): { task: string; diff: string; changes: TurnSnapshot['changes'] } | null {
+    for (let index = this.calls.length - 1; index >= 0; index -= 1) {
+      const call = this.calls[index]
+      const state = call.state as { task?: unknown; changes?: unknown } | undefined
+      if (state === undefined || !Array.isArray(state.changes) || state.changes.length === 0) continue
+      const changes = state.changes as TurnSnapshot['changes']
+      const task = call.task.length > 0 ? call.task : typeof state.task === 'string' ? state.task : ''
+      return { task, diff: localizationDiff({ changes }), changes }
+    }
+    return null
+  }
+
   private recordCall(record: Omit<LayaCallRecord, 'id' | 'ts'>): void {
     const call = { id: this.nextCallId++, ts: new Date().toISOString(), ...record }
     this.calls.push(call)

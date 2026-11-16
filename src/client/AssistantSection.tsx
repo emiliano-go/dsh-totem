@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { AssistantFace, AssistantState, AssistantTab } from './assistant-controller.ts'
+import type { AssistantFace, AssistantState, AssistantTab, LayaLocalizeResult } from './assistant-controller.ts'
 
 const TABS: { id: AssistantTab; label: string }[] = [
   { id: 'memory', label: 'Memory' },
@@ -61,6 +61,13 @@ export function AssistantSection(props: AssistantSectionProps) {
     telegramChatId: state.config.telegramChatId ?? '',
   })
   const [watch, setWatch] = useState({ kind: 'page', url: '', condition: '', interval: '15' })
+  const [narrow, setNarrow] = useState<{
+    task: string
+    diff: string
+    loading: boolean
+    error: string | null
+    result: LayaLocalizeResult | null
+  }>({ task: '', diff: '', loading: false, error: null, result: null })
   const [laya, setLaya] = useState({
     passThreshold: String(state.config.layaPassThreshold ?? 0.65),
     reviewBand: String(state.config.layaReviewBand ?? 0.05),
@@ -395,6 +402,87 @@ export function AssistantSection(props: AssistantSectionProps) {
               >
                 Save Laya settings
               </Button>
+            </div>
+            <div style={{ ...CARD, gap: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
+                <strong style={{ fontSize: 13 }}>Narrow a diff</strong>
+                <span style={MUTED}>Manual hunk ranking; never gates or steers.</span>
+              </div>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Task / bug description</span>
+                <input
+                  style={FIELD}
+                  placeholder="What is wrong, or what should the change do?"
+                  value={narrow.task}
+                  onChange={event => { setNarrow({ ...narrow, task: event.target.value }) }}
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Unified diff</span>
+                <textarea
+                  style={{ ...FIELD, minHeight: 150, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
+                  placeholder="Paste a unified diff, or load the last recorded turn diff."
+                  value={narrow.diff}
+                  onChange={event => { setNarrow({ ...narrow, diff: event.target.value }) }}
+                />
+              </label>
+              <div style={ROW_ACTIONS}>
+                <Button
+                  variant="primary"
+                  disabled={narrow.loading || narrow.task.trim().length === 0 || narrow.diff.trim().length === 0}
+                  onClick={() => {
+                    setNarrow({ ...narrow, loading: true, error: null, result: null })
+                    void props.localize(narrow.task, narrow.diff)
+                      .then(result => { setNarrow(current => ({ ...current, loading: false, result })) })
+                      .catch((error: unknown) => {
+                        setNarrow(current => ({ ...current, loading: false, error: error instanceof Error ? error.message : String(error) }))
+                      })
+                  }}
+                >
+                  {narrow.loading ? 'Ranking…' : 'Rank hunks'}
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={narrow.loading}
+                  onClick={() => {
+                    setNarrow({ ...narrow, loading: true, error: null, result: null })
+                    void props.lastDiff()
+                      .then(last => {
+                        if (last === null) throw new Error('No recorded turn changes yet; paste a diff or enable Laya for one turn.')
+                        setNarrow(current => ({ ...current, loading: false, task: last.task, diff: last.diff }))
+                      })
+                      .catch((error: unknown) => {
+                        setNarrow(current => ({ ...current, loading: false, error: error instanceof Error ? error.message : String(error) }))
+                      })
+                  }}
+                >
+                  Use last turn diff
+                </Button>
+              </div>
+              {narrow.error !== null ? <p style={{ ...MUTED, color: 'var(--dsw-alias-text-danger, #e06c75)' }}>{narrow.error}</p> : null}
+              {narrow.result !== null
+                ? narrow.result.hunks.length === 0
+                  ? <p style={MUTED}>No hunks found in that diff.</p>
+                  : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <p style={MUTED}>
+                        {narrow.result.top === null ? 'No top hunk.' : `Top hunk: ${narrow.result.top}`}
+                        {` · ${narrow.result.ms} ms`}
+                      </p>
+                      {narrow.result.hunks.map(hunk => (
+                        <div key={hunk.index} style={{ borderTop: '1px solid var(--dsw-alias-border, #333)', paddingTop: 4, fontSize: 12 }}>
+                          <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+                            <span style={{ fontFamily: 'monospace' }}>{hunk.header}</span>
+                            <span>{Math.round(hunk.score * 1000) / 10}%</span>
+                          </div>
+                          <div style={{ ...MUTED, fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
+                            {hunk.added.slice(0, 3).join('\n') || '(no added lines)'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                : null}
             </div>
           </div>
         )

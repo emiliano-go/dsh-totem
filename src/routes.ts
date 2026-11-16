@@ -110,6 +110,7 @@ const routes = {
     if (path === '/totem/reminders') return { items: await deps.reminders.list(true) }
     if (path === '/totem/watches') return { items: await deps.watches.list(true) }
     if (path === '/totem/laya/status') return deps.laya.status()
+    if (path === '/totem/laya/last-diff') return { diff: deps.laya.lastLocalizeInput() }
     if (path === '/totem/overview') {
       await deps.overview.ensure()
       const source = url.searchParams.get('source') ?? 'all'
