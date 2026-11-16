@@ -9,6 +9,14 @@ let registered: { id: string; factory: (require: (id: string) => unknown) => any
     load: (entry: typeof registered) => { registered = entry },
   },
 }
+const fakeLocalStorage = {
+  data: new Map<string, string>(),
+  getItem: (key: string) => fakeLocalStorage.data.get(key) ?? null,
+  setItem: (key: string, value: string) => { fakeLocalStorage.data.set(key, value) },
+  removeItem: (key: string) => { fakeLocalStorage.data.delete(key) },
+  clear: () => { fakeLocalStorage.data.clear() },
+}
+;(globalThis as any).localStorage = fakeLocalStorage
 await import('../lib/client.js?test')
 
 type JsxNode = { type: string; props: any }
@@ -85,7 +93,23 @@ function boot(options: { provider?: string; model?: string } = {}) {
     },
   }
   const slots: any[] = []
+  const unread = { sessions: new Set<string>(), published: 0, current: 'elsewhere' }
+  const statuses = new Map<string, any>()
+  const uiSession = {
+    completionUnread: unread.sessions,
+    publishStatus: () => { unread.published += 1 },
+    current: { getSnapshot: () => ({ key: unread.current }) },
+    sessionStatus: { getSnapshot: () => statuses, subscribe: () => () => {} },
+  }
   const ctx: any = {
+    get: (id: string) => {
+      expect(id).toBe('totem')
+      return form
+    },
+    inject: (_deps: readonly string[], callback: (inner: any) => void) => {
+      callback({ uiSession })
+      return () => {}
+    },
     configForms: {
       get: (id: string) => { expect(id).toBe('totem'); return form },
       whileServed: (ids: string[], register: () => () => void) => {
@@ -106,7 +130,7 @@ function boot(options: { provider?: string; model?: string } = {}) {
   }
   const exports = registered!.factory(platformRequire)
   exports.apply(ctx)
-  return { exports, slots, form, state }
+  return { exports, slots, form, state, unread, statuses, uiSession }
 }
 
 test('apply registers the Totem memory page and the Assistant section', () => {
@@ -293,4 +317,59 @@ test('an answer value is explained rather than restated', () => {
   expect(text).toContain('Bug class')
   expect(text).toContain('chosen bug class: off-by-one')
   expect(text).toContain('off-by-one')
+})
+
+test('the session row action restores the green unread dot', () => {
+  const { slots, unread } = boot()
+  const entry = slots.find(item => item.options.name === 'sidebar.workspaces.session.row.action')
+  expect(entry?.options.id).toBe('totem-unread')
+  const injected = entry!.options.inject()
+  const statuses = (status: Record<string, unknown>) =>
+    (selector: (map: Map<string, unknown>) => unknown) => selector(new Map([['s1', status]]))
+  const base = { sessionId: 's1', displayTitle: 'Session', ...injected }
+
+  fakeLocalStorage.clear()
+  const idle = entry!.component({ ...base, useSessionStatus: statuses({ running: false, completionUnread: false }) })
+  expect(idle?.type).toBe('button')
+  expect(idle?.props['aria-label']).toBe('Mark as unread')
+  idle.props.onClick({})
+  expect(unread.sessions.has('s1')).toBe(true)
+  expect(unread.published).toBe(1)
+  // The mark is persisted, so a reload can restore it.
+  expect(fakeLocalStorage.getItem('dsh-totem:unread-sessions') ?? '').toContain('s1')
+
+  // Nothing to restore while running or already unread.
+  expect(entry!.component({ ...base, useSessionStatus: statuses({ running: true }) })).toBeNull()
+  expect(entry!.component({ ...base, useSessionStatus: statuses({ completionUnread: true }) })).toBeNull()
+})
+
+test('a stored unread mark is restored on the next load', () => {
+  fakeLocalStorage.clear()
+  const first = boot()
+  const entry = first.slots.find(item => item.options.name === 'sidebar.workspaces.session.row.action')
+  const injected = entry!.options.inject()
+  const idle = entry!.component({
+    sessionId: 's9',
+    ...injected,
+    useSessionStatus: (selector: (map: Map<string, unknown>) => unknown) => selector(new Map([['s9', { running: false }]])),
+  })
+  idle.props.onClick({})
+  expect(first.unread.sessions.has('s9')).toBe(true)
+
+  // A fresh page with the same storage brings the dot back without a click.
+  const second = boot()
+  expect(second.unread.sessions.has('s9')).toBe(true)
+})
+
+test('the open session offers no unread action', () => {
+  fakeLocalStorage.clear()
+  const { slots, unread } = boot()
+  unread.current = 's1'
+  const entry = slots.find(item => item.options.name === 'sidebar.workspaces.session.row.action')
+  const node = entry!.component({
+    sessionId: 's1',
+    ...entry!.options.inject(),
+    useSessionStatus: (selector: (map: Map<string, unknown>) => unknown) => selector(new Map([['s1', { running: false }]])),
+  })
+  expect(node).toBeNull()
 })

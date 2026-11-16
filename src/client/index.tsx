@@ -20,6 +20,8 @@ import { DecisionBadgeController } from './decision-badge.ts'
 import { LayaTurnCard } from './LayaTurnCard.tsx'
 import { LayaToolView } from './LayaToolView.tsx'
 import { LayaCallsController } from './laya-calls.ts'
+import { SessionUnreadAction, installSessionUnreadStyles } from './SessionUnreadAction.tsx'
+import { SessionUnreadController, type UiSessionLike } from './session-unread.ts'
 import { OverviewPage } from './OverviewPage.tsx'
 import { OverviewIcon } from './OverviewIcon.tsx'
 import { OverviewController } from './overview.ts'
@@ -86,6 +88,33 @@ export function apply(ctx: ClientContext): void {
   }, LayaToolView)), 'dsh-totem: laya tool view')
 
   const overview = new OverviewController(ctx.configForms.get('totem'))
+  // The green "done" dot is browser state (`uiSession.completionUnread`) with no
+  // built-in way back. This row action restores it, beside archive and pin, and
+  // persists the mark so it survives a reload.
+  installSessionUnreadStyles()
+  let unread: SessionUnreadController | undefined
+  const markUnread = (sessionId: string): void => { unread?.mark(sessionId) }
+  // Wait for the session service instead of depending on it statically: the
+  // settings UI must still work when no session UI is loaded. The call stays a
+  // property access because cordis's `inject` uses `this`.
+  ;(ctx as unknown as {
+    inject?: (deps: readonly string[], callback: (inner: unknown) => void) => unknown
+  }).inject?.(['uiSession'], (inner) => {
+    const session = (inner as { uiSession?: UiSessionLike }).uiSession
+    if (session?.completionUnread === undefined) return
+    unread = new SessionUnreadController(session)
+    unread.restore()
+    ctx.effect(() => unread?.watch() ?? (() => {}), 'dsh-totem: unread mark expiry')
+  })
+  ctx.effect(() => (ctx.slots as unknown as {
+    inject: (name: string, register: () => unknown) => () => void
+  }).inject('sidebar.workspaces.session.row.action', () => ctx.slots.register({
+    name: 'sidebar.workspaces.session.row.action',
+    id: 'totem-unread',
+    order: 150,
+    inject: () => ({ markUnread, isCurrent: (id: string) => unread?.isCurrent(id) ?? false }),
+  } as never, SessionUnreadAction as never)), 'dsh-totem: mark session unread')
+
   ctx.effect(() => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
     name: 'sidebar.panellist',
     id: 'overview',
