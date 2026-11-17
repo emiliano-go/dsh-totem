@@ -1,15 +1,23 @@
 /**
  * Human slash commands for Totem.
  *
- * A command runs directly against the agent without becoming a model message,
- * which makes it the cheapest way to read or write memory: no turn, no tool
- * round-trip, no context cost. The set is deliberately small — the memory tools
- * remain the model's surface, these are the human's.
+ * Most commands run directly against the agent without becoming a model
+ * message, which makes them the cheapest way to read or write memory: no turn,
+ * no tool round-trip, no context cost. `/triage` is the deliberate exception:
+ * it steers a model-visible turn because the work needs the agent's evidence
+ * tools. The set is small — the memory tools remain the model's surface, these
+ * are the human's.
  *
  * @module dsh-totem/commands
  */
 import type { Context } from '@deepseek-ai/cordis'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { TotemService } from './service.ts'
+import {
+  DEFAULT_FEED_URL,
+  prepareTriage,
+  type TriageOptions,
+} from './triage.ts'
 
 /** Result shape shared with the Harness command registry. */
 type Result = { kind: 'success'; text?: string } | { kind: 'error'; text: string }
@@ -25,6 +33,11 @@ export interface RememberInput {
   type: string
   tags: string[]
   statement: string
+}
+
+/** Optional settings for the non-memory commands. */
+export interface TotemCommandOptions {
+  triage?: Partial<TriageOptions>
 }
 
 /**
@@ -76,10 +89,20 @@ function lines(items: unknown, limit = 8): string {
  * Register the Totem commands when the Harness composition mounts a command
  * surface. A profile without `dsh-commands` simply gets no commands.
  */
-export function registerTotemCommands(ctx: Context, totem: TotemService): void {
+export function registerTotemCommands(
+  ctx: Context,
+  totem: TotemService,
+  options: TotemCommandOptions = {},
+): void {
   ctx.inject(['commands'], (child) => {
     const register = (definition: Parameters<Context['commands']['register']>[0]): void => {
       child.effect(() => child.commands.register(definition), `dsh-totem: command /${definition.name}`)
+    }
+    const triage: TriageOptions = {
+      dir: options.triage?.dir ?? '',
+      feedUrl: options.triage?.feedUrl ?? '',
+      windowDays: options.triage?.windowDays ?? 7,
+      batch: options.triage?.batch ?? 20,
     }
 
     register({
@@ -199,6 +222,36 @@ export function registerTotemCommands(ctx: Context, totem: TotemService): void {
             reason: 'user handoff command',
           }, signal)
           return { kind: 'success', text: 'Handoff stored.' }
+        } catch (error) {
+          return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
+        }
+      },
+    })
+
+    register({
+      name: 'triage',
+      description: 'Triage untriaged TrustSight watcher alerts and record them in alert-triage/ledger.jsonl.',
+      input: { hint: '[7d|30|YYYY-MM-DD|all] [--limit N]' },
+      async handler({ agent, rawInput, signal }): Promise<Result> {
+        const session = (agent as { session?: { header?: { cwd?: string } } }).session
+        try {
+          const preparation = await prepareTriage({
+            cwd: session?.header?.cwd ?? process.cwd(),
+            rawInput,
+            options: {
+              ...triage,
+              feedUrl: triage.feedUrl.trim() || process.env.WATCHER_FEED_URL?.trim() || DEFAULT_FEED_URL,
+            },
+            now: Date.now(),
+            signal,
+          })
+          if (preparation.kind === 'error') return { kind: 'error', text: preparation.text }
+          if (preparation.kind === 'empty') return { kind: 'success', text: preparation.text }
+          agent.steer(createUserMessage({
+            content: [{ type: 'text', text: preparation.prompt }],
+            source: { kind: 'user' },
+          }))
+          return { kind: 'success', text: preparation.text }
         } catch (error) {
           return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
         }

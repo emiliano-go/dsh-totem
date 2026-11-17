@@ -17,6 +17,13 @@ export interface LayaSwitchState {
   error: string | null
 }
 
+interface LayaStatus {
+  enabled: boolean
+  healthy: boolean
+  loaded: boolean
+  error?: string | null
+}
+
 /** Face exposed to the composer switch. */
 export interface LayaSwitchFace {
   hooks: { layaSwitch: SnapshotStore<LayaSwitchState> }
@@ -84,8 +91,13 @@ export class LayaSwitchController {
 
   private async refresh(): Promise<void> {
     try {
-      const status = await this.request<{ enabled: boolean; healthy: boolean; loaded: boolean }>('/laya/status', 'GET')
-      this.update({ enabled: status.enabled, healthy: status.healthy, loaded: status.loaded, error: null })
+      const status = await this.request<LayaStatus>('/laya/status', 'GET')
+      this.update({
+        enabled: status.enabled,
+        healthy: status.healthy,
+        loaded: status.loaded,
+        error: typeof status.error === 'string' && status.error.length > 0 ? status.error : null,
+      })
     } catch (error) {
       this.update({ error: error instanceof Error ? error.message : String(error) })
     }
@@ -93,16 +105,30 @@ export class LayaSwitchController {
 
   private async toggle(): Promise<void> {
     if (this.store.getSnapshot().busy) return
-    const next = !this.store.getSnapshot().enabled
+    const previous = this.store.getSnapshot().enabled
+    const next = !previous
     this.update({ busy: true, enabled: next, loaded: false, error: null })
     try {
-      const status = await this.request<{ enabled: boolean; healthy: boolean; loaded: boolean }>(
+      const status = await this.request<LayaStatus>(
         next ? '/laya/enable' : '/laya/disable',
         'POST',
       )
-      this.update({ enabled: status.enabled, healthy: status.healthy, loaded: status.loaded, busy: false })
+      this.update({
+        enabled: status.enabled,
+        healthy: status.healthy,
+        loaded: status.loaded,
+        busy: false,
+        error: typeof status.error === 'string' && status.error.length > 0 ? status.error : null,
+      })
     } catch (error) {
-      this.update({ busy: false, error: error instanceof Error ? error.message : String(error) })
+      // The Host rolls a failed enable back to off; mirror that instead of
+      // leaving the optimistic checked/loading state on screen.
+      this.update({
+        busy: false,
+        enabled: previous,
+        loaded: false,
+        error: error instanceof Error ? error.message : String(error),
+      })
       void this.refresh()
     }
   }

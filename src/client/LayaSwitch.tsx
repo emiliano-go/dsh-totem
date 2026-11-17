@@ -39,7 +39,7 @@ export function LayaSwitch(props: LayaSwitchProps) {
   return (
     <span style={ROW} title={title}>
       <span style={{ ...LABEL, ...state.error === null ? {} : { color: 'var(--dsw-alias-text-error, #e5484d)' } }}>
-        Laya{state.enabled && !state.loaded ? ' · loading' : ''}
+        Laya{state.error !== null ? ' · error' : state.enabled && !state.loaded ? ' · loading' : ''}
       </span>
       <Switch
         checked={state.enabled}

@@ -83,6 +83,7 @@ export function AssistantSection(props: AssistantSectionProps) {
     verifyExternal: state.config.layaVerifyExternal ?? 'off',
     verifyDisable: (state.config.layaVerifyDisable ?? []).join(', '),
     model: state.config.layaModel ?? '',
+    device: state.config.layaDevice ?? 'auto',
     questionsFile: state.config.layaQuestionsFile ?? '',
   })
   const configKey = JSON.stringify(state.config)
@@ -109,6 +110,7 @@ export function AssistantSection(props: AssistantSectionProps) {
       verifyExternal: state.config.layaVerifyExternal ?? 'off',
       verifyDisable: (state.config.layaVerifyDisable ?? []).join(', '),
       model: state.config.layaModel ?? '',
+      device: state.config.layaDevice ?? 'auto',
       questionsFile: state.config.layaQuestionsFile ?? '',
     })
   }, [configKey])
@@ -363,6 +365,15 @@ export function AssistantSection(props: AssistantSectionProps) {
               <input style={FIELD} placeholder="external-semgrep, test-weakened" value={laya.verifyDisable} onChange={event => { setLaya({ ...laya, verifyDisable: event.target.value }) }} />
             </label>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 170 }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Device</span>
+                <select style={FIELD} value={laya.device} onChange={event => { setLaya({ ...laya, device: event.target.value }) }}>
+                  <option value="auto">Auto (GPU first)</option>
+                  <option value="cuda">CUDA / NVIDIA GPU</option>
+                  <option value="mps">MPS / Apple GPU</option>
+                  <option value="cpu">CPU / RAM</option>
+                </select>
+              </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 280px' }}>
                 <span style={{ fontSize: 12, fontWeight: 600 }}>Model path</span>
                 <input style={FIELD} value={laya.model} onChange={event => { setLaya({ ...laya, model: event.target.value }) }} />
@@ -396,6 +407,7 @@ export function AssistantSection(props: AssistantSectionProps) {
                     layaVerifyExternal: laya.verifyExternal,
                     layaVerifyDisable: laya.verifyDisable.split(',').map(value => value.trim()).filter(Boolean),
                     layaModel: laya.model,
+                    layaDevice: laya.device,
                     layaQuestionsFile: laya.questionsFile,
                   })
                 }}

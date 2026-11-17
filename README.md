@@ -13,9 +13,12 @@ A workflow prompt section and a first-step recent-memory digest are also mounted
 4. **Compaction survival.** The plugin notices the Harness compaction markers,
    persists the session's work before the summary replaces it, and restores the
    durable decisions, invariants, contracts, and active tasks at the next step.
-5. **Commands and skills.** `/remember`, `/recall`, `/forget`, `/memory`,
-   `/handoff` run without spending a model turn, and every stored workflow is
-   projected into the skill catalog as a loadable skill.
+5. **Commands, triage, and skills.** `/remember`, `/recall`, `/forget`,
+   `/memory`, `/handoff` run without spending a model turn. `/triage` is the
+   exception: it steers a normal agent turn to work through untriaged
+   TrustSight watcher alerts and keeps the result in an append-only ledger.
+   Every stored workflow is projected into the skill catalog as a loadable
+   skill.
 6. **Conflict inbox and evaluation.** Contradictions reported by a write are
    kept for review in the Web GUI and resolvable from the model or the human,
    and `bun run eval` gates ranking quality on a golden case file.
@@ -234,8 +237,9 @@ Host, no model, no GPU — which is also how the rules are tested.
 ## Commands
 
 Registered when the profile mounts `dsh-commands`; a profile without a command
-surface simply gets none. A command runs directly against the agent and never
-becomes a model message.
+surface simply gets none. Most commands run directly against the agent and
+never become a model message; `/triage` is the deliberate exception, because
+the evidence work needs a real agent turn.
 
 | Command | Effect |
 |---|---|
@@ -244,6 +248,51 @@ becomes a model message.
 | `/forget <id> [reason]` | Delete one memory with a reason. |
 | `/memory` | Active/archived counts, open conflicts, and stale evidence. |
 | `/handoff <summary>` | Store a session handoff before the context is compacted. |
+| `/triage [7d\|30\|YYYY-MM-DD\|all] [--limit N]` | Queue a model turn that triages untriaged TrustSight watcher alerts and records each one in `alert-triage/ledger.jsonl`. |
+
+### TrustSight triage
+
+`/triage` does the deterministic part and leaves the judgement to the agent.
+It reads `<triageDir>/ledger.jsonl`, fetches `trustsight.alerts` from the
+watcher feed, drops every slug already in the ledger, writes a timestamped
+queue, and steers one normal model-visible turn with the batch. The turn uses
+the `trustsight-harness` MCP tools (`feed_message`, `fp_triage`,
+`aur_pkgbuild`, `feed_package_diff`, `rule_info`, `fp_agent_verify`, ...) to
+decide `TP`, `BFP`, `MFP`, or `uncertain` per package. The command itself never
+decides a verdict.
+
+```
+<session cwd>/alert-triage/
+  ledger.jsonl                     one JSON line per triaged alert
+  queue-<UTC>.json                 untriaged alerts handed to the agent
+  reports/<YYYY-MM-DD-HHMMSS>.md   per-alert report
+  README.md                        layout and ledger schema
+```
+
+The ledger is append-only and authoritative: a slug that appears there is
+skipped by later runs, so an interrupted run resumes instead of redoing work.
+The default window starts at the newest alert time already in the ledger, with
+a one-day overlap, or the last 7 days when the ledger is empty. `all` removes
+the lower bound; the feed is still paged. The default batch is 20 alerts
+because one turn cannot perform evidence triage on the ~200 alerts a week of
+feed carries; the result text reports how many remain and repeated runs drain
+the backlog.
+
+Writes stay under the session workspace so the file sandbox admits them. Run
+the command from a session whose workspace is the TrustSight checkout to keep
+the artifacts next to the watcher notes; point `triageDir` at an absolute path
+only when that path is writable from the session.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `triageDir` | `''` | Empty uses `<session cwd>/alert-triage`; `~/` is expanded. |
+| `triageFeedUrl` | `''` | Empty uses `WATCHER_FEED_URL`, then `https://watcher.trustsight.org`. |
+| `triageWindowDays` | `7` | Default lookback when the ledger has no entries. |
+| `triageBatch` | `20` | Maximum alerts queued per run; `0` queues every untriaged alert. |
+
+Alert titles, headlines, and package names are treated as untrusted feed text:
+they are sanitized into the queue file and the prompt forbids following
+instructions found inside them.
 
 ## Workflow skills
 
@@ -332,7 +381,18 @@ The `totem` plugin can run the custom Laya judge locally:
   it on starts the server and preloads the model into VRAM (switch shows
   `· loading` until ready); turning it off kills the process, frees VRAM, hides
   `decision_ask`, and skips verify/step/judge. State persists in
-  `~/.dsh/totem/laya.json`.
+  `~/.dsh/totem/laya.json`. A failed start now rolls the switch back to off and
+  shows the reason instead of leaving an endless `· loading`; the managed
+  server's stdout/stderr is appended to `~/.dsh/totem/laya-server.log`. With
+  `layaManageServer: false`, a healthy server must already be listening at
+  `layaBaseUrl`.
+- **Device**: `layaDevice` selects `auto` (the default), `cuda`, `mps`, or
+  `cpu`. `auto` leaves laya's own resolution, which prefers CUDA, then MPS,
+  then CPU. An explicit device is appended to the managed command unless the
+  command already has a `--device` flag, and laya falls back to CPU when that
+  device is unavailable or the model does not fit in VRAM. If another process
+  already serves `layaBaseUrl`, the plugin uses that server and `layaDevice`
+  cannot change its device; stop it or point the plugin at a free port.
 - **Fail-closed scoring**: every configured question must be answered; a missing
   answer, low confidence, or a composite inside `layaReviewBand` (default `0.05`)
   resolves to `needs_review` instead of flipping pass/fail.
@@ -356,7 +416,7 @@ The `totem` plugin can run the custom Laya judge locally:
   call to the agent.
 - **Assistant → Laya tab**: pass threshold, review band, veto threshold,
   confidence floor, retries, step checks/cadence/budget, verify command, external
-  scanners, disabled rules, model path, questions file, calibration file.
+  scanners, disabled rules, model path, device, questions file, calibration file.
 - **Chat footer badge**: finalized assistant messages show `· Decision <verdict>
   <composite>` once the turn's evaluation is recorded.
 - **Judge-call card**: each assistant message with judge calls gets a collapsible
@@ -370,6 +430,7 @@ The `totem` plugin can run the custom Laya judge locally:
     layaBaseUrl: http://127.0.0.1:8765
     layaServerCommand: '/path/to/python /path/to/laya-server.py --model /path/to/checkpoint --port 8765'
     layaManageServer: true
+    layaDevice: auto
     layaPassThreshold: 0.65
     layaMaxRetries: 1
     layaStepChecks: veto
@@ -424,6 +485,25 @@ bun run script/patch-think-default.ts
 This edits the installed `@deepseek-ai/dsh-client-ui-chat/lib/client.js`
 (the row is not a replaceable slot) and keeps a `.bak-totem` backup. Rerun it
 after every DSH upgrade or reinstall, then restart the app.
+
+## Workspace status markers
+
+The sidebar's Workspace folders now carry the primary state of the Sessions
+inside them, so a collapsed folder still shows what is happening:
+
+- a spinner when a Session (or one of its subagents) is running;
+- a yellow dot when a Session is waiting for approval, a plan review, or an
+  answer;
+- a green dot when a Session finished while it was not the open view.
+
+```sh
+bun run script/patch-workspace-status.ts
+```
+
+This edits the installed `@deepseek-ai/dsh-client-ui-workspace/lib/client.js`
+(the Workspace row is not a replaceable slot) and keeps a `.bak-totem` backup.
+The precedence matches the Session row: pending > running > done. Rerun it
+after every DSH upgrade or reinstall, then reload the app.
 
 ## Upgrade DSH
 

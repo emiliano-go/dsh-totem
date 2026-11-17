@@ -1,5 +1,6 @@
 /** Laya decision engine: managed HTTP server, turn evaluation, feedback, and logging. */
 import { spawn, type ChildProcess } from 'node:child_process'
+import { closeSync, openSync } from 'node:fs'
 import { appendFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -318,6 +319,8 @@ export interface LayaConfig {
   baseUrl: Volatile<string>
   serverCommand: Volatile<string>
   manageServer: Volatile<boolean>
+  /** Device for the managed server: auto (GPU first), cuda, mps, or cpu. */
+  device: Volatile<string>
   passThreshold: Volatile<number>
   /** Band around the threshold that resolves to needs_review instead of a flip. */
   reviewBand: Volatile<number>
@@ -346,6 +349,25 @@ export interface LayaConfig {
   verifyCommand: Volatile<string>
   verifyExternal: Volatile<'auto' | 'on' | 'off'>
   verifyDisable: Volatile<readonly string[]>
+}
+
+/**
+ * Add a device flag to a managed laya command.
+ *
+ * `auto` leaves the command alone because laya already resolves CUDA, then
+ * MPS, then CPU. An explicit `--device` in `serverCommand` also wins, so a
+ * custom wrapper keeps control. Otherwise the configured device is appended;
+ * laya itself falls back to CPU when the requested device is unavailable or
+ * the model does not fit in VRAM.
+ */
+export function withLayaDevice(command: string, device: string): string {
+  const trimmed = command.trim()
+  const value = device.trim().toLowerCase()
+  if (trimmed.length === 0) return command
+  if (value === '' || value === 'auto') return command.trim()
+  if (value !== 'cuda' && value !== 'mps' && value !== 'cpu') return command.trim()
+  if (/(^|\s)--device(?:=|\s)/u.test(trimmed)) return command.trim()
+  return `${trimmed} --device ${value}`
 }
 
 function valueOf(key: string, answer: LayaAnswer): number | null {
@@ -611,6 +633,9 @@ export class LayaEngine {
   private child: ChildProcess | undefined
   private on = false
   private loaded = false
+  /** Last failed start, kept for the status route so "loading" never lies. */
+  private lastError: string | null = null
+  private lastExit: string | undefined
   private readonly recent = new Map<string, { verdict: string; composite: number | null; at: string; session: string; turn: number }>()
   private readonly calls: LayaCallRecord[] = []
   private nextCallId = 1
@@ -661,7 +686,7 @@ export class LayaEngine {
     await this.stopServer()
   }
 
-  async status(): Promise<{ enabled: boolean; healthy: boolean; loaded: boolean; managed: boolean; baseUrl: string; model: string }> {
+  async status(): Promise<{ enabled: boolean; healthy: boolean; loaded: boolean; managed: boolean; baseUrl: string; model: string; device: string; error: string | null }> {
     return {
       enabled: this.enabled(),
       healthy: await this.healthy(),
@@ -669,6 +694,8 @@ export class LayaEngine {
       managed: this.child !== undefined,
       baseUrl: this.config.baseUrl.get(),
       model: this.config.model.get(),
+      device: this.config.device.get(),
+      error: this.lastError,
     }
   }
 
@@ -796,21 +823,39 @@ export class LayaEngine {
   }
 
   async enable(): Promise<void> {
+    this.lastError = null
     this.on = true
     this.loaded = false
-    await this.persist(true)
-    if (!(await this.healthy())) {
-      if (!this.config.manageServer.get()) throw new Error('laya server is not running and manageServer is false')
-      this.startServer()
-      const deadline = Date.now() + 90_000
-      while (Date.now() < deadline) {
-        if (await this.healthy()) break
-        await new Promise(resolve => setTimeout(resolve, 1000))
+    try {
+      await this.persist(true)
+      if (!(await this.healthy())) {
+        if (!this.config.manageServer.get()) throw new Error('laya server is not running and manageServer is false')
+        this.startServer()
+        const deadline = Date.now() + 90_000
+        while (Date.now() < deadline) {
+          if (await this.healthy()) break
+          // A child that exits cannot become healthy; waiting the full deadline
+          // only turns a startup error into a silent "loading" state.
+          if (this.child === undefined) {
+            throw new Error(`laya server exited before becoming healthy${this.lastExit === undefined ? '' : ` (${this.lastExit})`}; see laya-server.log`)
+          }
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+        if (!(await this.healthy())) throw new Error('laya server did not become healthy')
       }
-      if (!(await this.healthy())) throw new Error('laya server did not become healthy')
+      await this.warmup()
+      this.loaded = true
+    } catch (error) {
+      // A failed enable used to leave `on = true, loaded = false`, which the UI
+      // could only render as an endless "loading". Roll back to a truthful off
+      // state, remember why, and stop a server this call started.
+      this.on = false
+      this.loaded = false
+      this.lastError = error instanceof Error ? error.message : String(error)
+      await this.persist(false).catch(() => {})
+      await this.stopServer().catch(() => {})
+      throw error
     }
-    await this.warmup()
-    this.loaded = true
   }
 
   /** Load the model into VRAM with one tiny request; the shim loads lazily. */
@@ -830,6 +875,7 @@ export class LayaEngine {
   async disable(): Promise<void> {
     this.on = false
     this.loaded = false
+    this.lastError = null
     await this.persist(false)
     await this.stopServer()
   }
@@ -842,17 +888,36 @@ export class LayaEngine {
 
   private startServer(): void {
     if (this.child !== undefined) return
-    const command = this.config.serverCommand.get().trim()
+    const command = withLayaDevice(this.config.serverCommand.get(), this.config.device.get())
     if (command.length === 0) throw new Error('laya serverCommand is empty')
     process.once('exit', this.onExit)
-    this.child = spawn(command, {
-      shell: true,
-      stdio: 'ignore',
-      detached: false,
-      env: process.env,
+    this.lastExit = undefined
+    // Keep the server's stderr: a Python traceback is the only useful evidence
+    // when the model or the interpreter fails to start.
+    let log: number | undefined
+    try {
+      log = openSync(join(dirname(this.stateFile), 'laya-server.log'), 'a')
+    } catch {}
+    try {
+      this.child = spawn(command, {
+        shell: true,
+        stdio: log === undefined ? 'ignore' : ['ignore', log, log],
+        detached: false,
+        // Unbuffered Python: a CPU fallback warning must reach the log before
+        // the process is stopped, not sit in a pipe buffer.
+        env: { ...process.env, PYTHONUNBUFFERED: '1' },
+      })
+    } finally {
+      if (log !== undefined) closeSync(log)
+    }
+    this.child.on('exit', (code, signal) => {
+      this.lastExit = `exit ${code ?? 'null'}${signal === null ? '' : `, ${signal}`}`
+      this.child = undefined
     })
-    this.child.on('exit', () => { this.child = undefined })
-    this.child.on('error', () => { this.child = undefined })
+    this.child.on('error', (error) => {
+      this.lastExit = error.message
+      this.child = undefined
+    })
   }
 
   private async stopServer(): Promise<void> {

@@ -92,6 +92,7 @@ export interface AssistantConfig {
   layaVerifyExternal?: string
   layaVerifyDisable?: string[]
   layaModel?: string
+  layaDevice?: string
   layaQuestionsFile?: string
 }
 
@@ -436,7 +437,7 @@ export class AssistantController {
       'layaPassThreshold', 'layaReviewBand', 'layaVetoThreshold', 'layaConfidenceFloor', 'layaCalibrationFile',
       'layaMaxRetries', 'layaTimeoutMs', 'layaStepChecks', 'layaStepCadence',
       'layaStepMaxFeedback', 'layaVerifyCommand', 'layaVerifyExternal', 'layaVerifyDisable',
-      'layaModel', 'layaQuestionsFile',
+      'layaModel', 'layaDevice', 'layaQuestionsFile',
     ]
     this.writing = true
     this.publish()

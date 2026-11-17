@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { LayaEngine, decide, feedback, hunksForLocalization, localizationDiff, parseCallLines, rankLocalization, slimCall, splitDiffHunks, type TurnSnapshot } from '../src/laya.ts'
+import { LayaEngine, decide, feedback, hunksForLocalization, localizationDiff, parseCallLines, rankLocalization, slimCall, splitDiffHunks, withLayaDevice, type TurnSnapshot } from '../src/laya.ts'
 import { callKindLabel, changedPaths, selectTurnCalls } from '../src/client/laya-calls.ts'
 
 test('decide vetoes, scores, and explains failures', () => {
@@ -51,6 +51,7 @@ const config = {
   baseUrl: { get: () => 'http://laya.test' },
   serverCommand: { get: () => '' },
   manageServer: { get: () => false },
+  device: { get: () => 'auto' },
   passThreshold: { get: () => 0.65 },
   reviewBand: { get: () => 0 },
   vetoThreshold: { get: () => 0.5 },
@@ -83,6 +84,51 @@ function mockFetch(answers: Record<string, unknown> | null): void {
     return { ok: true, json: async () => ({ answers }) }
   }
 }
+
+function newEngine(): LayaEngine {
+  const totem = { call: async () => [], config: {} }
+  return new LayaEngine(
+    {} as any,
+    totem as any,
+    config as any,
+    join(mkdtempSync(join(tmpdir(), 'laya-enable-')), 'laya.json'),
+  )
+}
+
+test('device selection appends a flag unless the command owns one', () => {
+  expect(withLayaDevice('python serve.py --model m', 'cuda')).toBe('python serve.py --model m --device cuda')
+  expect(withLayaDevice('python serve.py --device cpu --model m', 'cuda')).toBe('python serve.py --device cpu --model m')
+  expect(withLayaDevice('python serve.py --device=cpu', 'cuda')).toBe('python serve.py --device=cpu')
+  expect(withLayaDevice('python serve.py', 'auto')).toBe('python serve.py')
+  expect(withLayaDevice('python serve.py', 'nonsense')).toBe('python serve.py')
+  expect(withLayaDevice('', 'cuda')).toBe('')
+})
+
+test('a failed enable rolls back instead of leaving the switch loading', async () => {
+  ;(globalThis as any).fetch = async () => { throw new Error('offline') }
+  const instance = newEngine()
+  await expect(instance.enable()).rejects.toThrow('manageServer is false')
+  expect(instance.enabled()).toBe(false)
+  const status = await instance.status()
+  expect(status.enabled).toBe(false)
+  expect(status.loaded).toBe(false)
+  expect(status.error).toContain('manageServer is false')
+})
+
+test('enable marks loaded only after warmup succeeds', async () => {
+  const calls: string[] = []
+  ;(globalThis as any).fetch = async (url: string) => {
+    calls.push(String(url))
+    return { ok: true, json: async () => ({ answers: {} }) }
+  }
+  const instance = newEngine()
+  await instance.enable()
+  expect(instance.enabled()).toBe(true)
+  expect((instance as any).loaded).toBe(true)
+  expect(calls.some(url => url.endsWith('/health'))).toBe(true)
+  expect(calls.some(url => url.endsWith('/v1/systemone'))).toBe(true)
+  expect((await instance.status()).error).toBeNull()
+})
 
 test('turn-stopping steers with feedback on a failing verdict', async () => {
   mockFetch({

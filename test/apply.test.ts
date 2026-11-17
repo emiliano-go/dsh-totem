@@ -53,7 +53,7 @@ describe('plugin composition', () => {
       expect(names).toContain(name)
     }
     expect(commands.map(command => command.name).sort())
-      .toEqual(['forget', 'handoff', 'memory', 'recall', 'remember'].sort())
+      .toEqual(['forget', 'handoff', 'memory', 'recall', 'remember', 'triage'].sort())
     expect(providers.map(provider => provider.name)).toEqual(['totem-workflows'])
     // Discovery must degrade to an empty catalog when the server is down.
     expect(await providers[0].list({ cwd: home })).toEqual([])

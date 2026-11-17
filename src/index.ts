@@ -108,6 +108,14 @@ export interface Config {
   telegramChatId: Volatile<string>
   /** Allow watches to fetch loopback/private addresses. */
   watchAllowPrivate: Volatile<boolean>
+  /** Directory for TrustSight triage artifacts; empty uses `<session cwd>/alert-triage`. */
+  triageDir: string
+  /** TrustSight watcher feed base URL; empty uses `WATCHER_FEED_URL` or the public feed. */
+  triageFeedUrl: string
+  /** Default lookback in days for `/triage` when the ledger has no entries. */
+  triageWindowDays: number
+  /** Maximum alerts queued per `/triage` run; `0` queues every untriaged alert. */
+  triageBatch: number
   /** Initial laya switch state when no saved state exists. */
   layaEnabled: boolean
   /** Laya HTTP base URL. */
@@ -116,6 +124,8 @@ export interface Config {
   layaServerCommand: string
   /** Whether this plugin owns the laya server process. */
   layaManageServer: boolean
+  /** Managed laya device: auto (GPU first), cuda, mps, or cpu. */
+  layaDevice: 'auto' | 'cuda' | 'mps' | 'cpu'
   /** Laya pass threshold. */
   layaPassThreshold: Volatile<number>
   /** Band around the threshold that resolves to needs_review. */
@@ -182,10 +192,15 @@ export const Config: z<Config> = z.object({
   telegramBotToken: z.string().default('').volatile(),
   telegramChatId: z.string().default('').volatile(),
   watchAllowPrivate: z.boolean().default(false).volatile(),
+  triageDir: z.string().default(''),
+  triageFeedUrl: z.string().default(''),
+  triageWindowDays: z.number().step(1).min(1).default(7),
+  triageBatch: z.number().step(1).min(0).default(20),
   layaEnabled: z.boolean().default(false),
   layaBaseUrl: z.string().default('http://127.0.0.1:8765'),
   layaServerCommand: z.string().default('/home/eclipse/Documents/laya-ft/.venv/bin/python /home/eclipse/Documents/GitHub/safebox/encoder/script/laya-server.py --model /data/laya-ft/out-m5mem4-head --port 8765'),
   layaManageServer: z.boolean().default(true),
+  layaDevice: z.union(['auto', 'cuda', 'mps', 'cpu']).default('auto'),
   layaPassThreshold: z.number().default(0.65).volatile(),
   layaReviewBand: z.number().min(0).default(0.05).volatile(),
   layaVetoThreshold: z.number().min(0).max(1).default(0.5).volatile(),
@@ -330,7 +345,14 @@ export function apply(ctx: Context, config: Config): void {
   registerNotifyTool(ctx, totem)
   registerCiTools(ctx)
   registerRecallTool(ctx, totem)
-  registerTotemCommands(ctx, totem)
+  registerTotemCommands(ctx, totem, {
+    triage: {
+      dir: config.triageDir,
+      feedUrl: config.triageFeedUrl,
+      windowDays: config.triageWindowDays,
+      batch: config.triageBatch,
+    },
+  })
   registerWorkflowSkills(ctx, totem)
   const compaction = new CompactionMemory(totem)
   const live = <T>(value: T): Volatile<T> => ({ get: () => value }) as unknown as Volatile<T>
@@ -339,6 +361,7 @@ export function apply(ctx: Context, config: Config): void {
     baseUrl: live(config.layaBaseUrl),
     serverCommand: live(config.layaServerCommand),
     manageServer: live(config.layaManageServer),
+    device: live(config.layaDevice),
     passThreshold: config.layaPassThreshold,
     reviewBand: config.layaReviewBand,
     vetoThreshold: config.layaVetoThreshold,
