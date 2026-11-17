@@ -91,6 +91,14 @@ export type AssistantTab =
   | 'watches'
   | 'notifications'
   | 'verify'
+  | 'server'
+
+/** Live host facts shown by the Server tab. */
+export interface HostStatus {
+  pid: number
+  busy: boolean
+  launcher: string | null
+}
 
 /** Snapshot rendered by the section. */
 export interface AssistantState {
@@ -111,6 +119,9 @@ export interface AssistantState {
   verifyRules: VerifyRuleRow[]
   verifyCommand: string
   verifyDisable: string
+  host: HostStatus | null
+  restarting: boolean
+  restartMessage: string | null
 }
 
 /** Registration-side face for the section. */
@@ -133,6 +144,7 @@ export interface AssistantFace {
   saveConfig: (values: AssistantConfig) => void
   saveVerify: (command: string, disable: string) => void
   testNotification: () => void
+  restartServer: () => void
 }
 
 function asArray(value: unknown): unknown[] {
@@ -159,6 +171,9 @@ export class AssistantController {
   private verifyRules: VerifyRuleRow[] = []
   private verifyCommand = ''
   private verifyDisable = ''
+  private host: HostStatus | null = null
+  private restarting = false
+  private restartMessage: string | null = null
   private status: AssistantState['status'] = 'idle'
   private error: string | null = null
   private notice: string | null = null
@@ -203,6 +218,7 @@ export class AssistantController {
       saveConfig: values => { void this.saveConfig(values) },
       saveVerify: (command, disable) => { void this.saveVerify(command, disable) },
       testNotification: () => { void this.testNotification() },
+      restartServer: () => { void this.restartServer() },
     }
   }
 
@@ -233,6 +249,9 @@ export class AssistantController {
       verifyRules: this.verifyRules,
       verifyCommand: this.verifyCommand,
       verifyDisable: this.verifyDisable,
+      host: this.host,
+      restarting: this.restarting,
+      restartMessage: this.restartMessage,
     }
   }
 
@@ -308,6 +327,8 @@ export class AssistantController {
         this.verifyRules = data.rules
         this.verifyCommand = data.settings.command
         this.verifyDisable = data.settings.disable.join(', ')
+      } else if (this.tab === 'server') {
+        this.host = await this.request<HostStatus>('/host')
       }
       this.status = 'ready'
     } catch (error) {
@@ -315,6 +336,65 @@ export class AssistantController {
       this.status = 'error'
     }
     this.publish()
+  }
+
+  /**
+   * Ask the host to relaunch itself, wait for the new process, then reload.
+   *
+   * The reload is what puts the browser on the new host: the websocket dies
+   * with the old process, and polling `/host` is the only signal that the
+   * replacement is actually serving. The pid comparison matters — while the
+   * old process drains, its own `/host` still answers and would look healthy.
+   */
+  private async restartServer(): Promise<void> {
+    if (this.restarting) return
+    this.restarting = true
+    this.error = null
+    this.restartMessage = 'Scheduling the restart…'
+    this.publish()
+    try {
+      const before = this.host ?? await this.request<HostStatus>('/host')
+      this.host = before
+      const { plan } = await this.request<{ plan: { mode: 'now' | 'idle' } }>('/restart', {
+        method: 'POST',
+        body: JSON.stringify({ idle: true }),
+      })
+      this.restartMessage = plan.mode === 'idle'
+        ? 'Waiting for the running turn to finish…'
+        : 'Restarting the host…'
+      this.publish()
+      await this.waitForNewHost(before.pid)
+      this.restartMessage = 'Host is back — reloading…'
+      this.publish()
+      const location = (globalThis as { location?: { reload: () => void } }).location
+      location?.reload()
+    } catch (error) {
+      this.restarting = false
+      this.restartMessage = null
+      this.error = error instanceof Error ? error.message : String(error)
+      this.publish()
+    }
+  }
+
+  /**
+   * Poll until a different host answers.
+   * @param pid - pid of the host being replaced.
+   */
+  private async waitForNewHost(pid: number): Promise<void> {
+    const deadline = Date.now() + 120_000
+    let sawDown = false
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 1_000))
+      try {
+        const host = await this.request<HostStatus>('/host')
+        if (host.pid !== pid) return
+      } catch {
+        sawDown = true
+      }
+    }
+    throw new Error(sawDown
+      ? 'the host went down but did not come back within two minutes'
+      : 'the host did not restart within two minutes')
   }
 
   private async search(publishLoading = true): Promise<void> {

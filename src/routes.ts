@@ -11,6 +11,7 @@ import { ruleCatalog } from './verify-lane.ts'
 import { sendNotification } from './notify.ts'
 import type { OverviewService } from './overview.ts'
 import type { ConflictInbox } from './conflicts.ts'
+import type { RestartController } from './restart.ts'
 
 const BODY_LIMIT = 1_000_000
 
@@ -32,6 +33,13 @@ interface AssistantDeps {
   conflicts: ConflictInbox
   verify: VerifyStore
   verifyLane: VerifyLane
+  restart: RestartController
+}
+
+/** Per-request facts the handlers need. */
+interface RouteContext {
+  /** Port this request arrived on, so the launcher targets the same one. */
+  port?: number
 }
 
 function json(res: ServerResponse, status: number, value: unknown): void {
@@ -81,8 +89,10 @@ const routes = {
     path: string,
     url: URL,
     deps: AssistantDeps,
+    _context: RouteContext = {},
   ): Promise<unknown> {
     if (path === '/totem/ping') return { ok: true }
+    if (path === '/totem/host') return deps.restart.status()
     if (path === '/totem/verify/rules') {
       return {
         rules: ruleCatalog(),
@@ -135,7 +145,18 @@ const routes = {
     path: string,
     bodyValue: Record<string, unknown>,
     deps: AssistantDeps,
+    context: RouteContext = {},
   ): Promise<unknown> {
+    if (path === '/totem/restart') {
+      const delay = Number(bodyValue.delayMs ?? Number.NaN)
+      return {
+        plan: deps.restart.schedule({
+          idle: bodyValue.idle !== false,
+          ...Number.isFinite(delay) ? { delayMs: delay } : {},
+          ...context.port === undefined ? {} : { port: context.port },
+        }),
+      }
+    }
     if (path === '/totem/overview/import') { return deps.overview.importHistory() }
     if (path === '/totem/watches') {
       const interval = Number(bodyValue.intervalMinutes ?? 15)
@@ -209,8 +230,9 @@ export function registerAssistantRoutes(
             const token = deps.totem.config.apiToken.get().trim()
             if (!authorized(req, token)) return json(res, 401, { error: 'unauthorized' })
             const url = new URL(req.url ?? '/', 'http://localhost')
-            if (req.method === 'GET') return json(res, 200, await routes.GET(url.pathname, url, deps))
-            if (req.method === 'POST') return json(res, 200, await routes.POST(url.pathname, await body(req), deps))
+            const context: RouteContext = { port: req.socket.localPort }
+            if (req.method === 'GET') return json(res, 200, await routes.GET(url.pathname, url, deps, context))
+            if (req.method === 'POST') return json(res, 200, await routes.POST(url.pathname, await body(req), deps, context))
             return json(res, 405, { error: 'method not allowed' })
           } catch (error) {
             const status = typeof error === 'object' && error !== null && 'status' in error

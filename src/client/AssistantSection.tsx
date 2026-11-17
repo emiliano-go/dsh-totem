@@ -12,6 +12,7 @@ const TABS: { id: AssistantTab; label: string }[] = [
   { id: 'watches', label: 'Watches' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'verify', label: 'Verify' },
+  { id: 'server', label: 'Server' },
 ]
 
 const FIELD: React.CSSProperties = {
@@ -62,6 +63,7 @@ export function AssistantSection(props: AssistantSectionProps) {
   })
   const [watch, setWatch] = useState({ kind: 'page', url: '', condition: '', interval: '15' })
   const [verifyDraft, setVerifyDraft] = useState({ command: state.verifyCommand, disable: state.verifyDisable })
+  const [confirmRestart, setConfirmRestart] = useState(false)
   useEffect(() => {
     setVerifyDraft({ command: state.verifyCommand, disable: state.verifyDisable })
   }, [state.verifyCommand, state.verifyDisable])
@@ -313,6 +315,63 @@ export function AssistantSection(props: AssistantSectionProps) {
                 <div style={{ fontSize: 13 }}>{rule.description}</div>
               </div>
             ))}
+          </div>
+        )
+        : null}
+
+      {state.tab === 'server'
+        ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={MUTED}>
+              Restarts the DSH host that serves this page. The session survives and this page reloads
+              as soon as the replacement answers. A restart pressed during a turn waits for that turn
+              to finish, so nothing is cut in half.
+            </p>
+            <div style={CARD}>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>Host</span>
+              <span style={MUTED}>
+                pid {state.host?.pid ?? '—'} · {state.host?.busy === true ? 'a turn is running' : 'idle'}
+              </span>
+              <span style={MUTED}>
+                launcher: {state.host?.launcher ?? 'not found (set restartCommand)'}
+              </span>
+            </div>
+            <div style={{ ...ROW_ACTIONS, alignItems: 'stretch' }}>
+              <Button
+                variant="primary"
+                style={{ minHeight: 44, flex: '1 1 220px' }}
+                disabled={state.restarting || state.host?.launcher === null}
+                onClick={() => {
+                  if (confirmRestart) {
+                    setConfirmRestart(false)
+                    props.restartServer()
+                    return
+                  }
+                  setConfirmRestart(true)
+                }}
+              >
+                {state.restarting
+                  ? state.restartMessage ?? 'Restarting…'
+                  : confirmRestart ? 'Tap again to restart' : 'Restart DSH server'}
+              </Button>
+              {confirmRestart && !state.restarting
+                ? (
+                  <Button
+                    variant="ghost"
+                    style={{ minHeight: 44 }}
+                    onClick={() => { setConfirmRestart(false) }}
+                  >
+                    Cancel
+                  </Button>
+                )
+                : null}
+            </div>
+            {confirmRestart && !state.restarting
+              ? <p style={MUTED}>The page disconnects for a few seconds and reloads itself.</p>
+              : null}
+            {state.restartMessage !== null && !state.restarting
+              ? <p style={MUTED}>{state.restartMessage}</p>
+              : null}
           </div>
         )
         : null}

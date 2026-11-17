@@ -38,6 +38,8 @@ export interface RememberInput {
 /** Optional settings for the non-memory commands. */
 export interface TotemCommandOptions {
   triage?: Partial<TriageOptions>
+  /** Schedule a host restart; omitted leaves `/restart` unavailable. */
+  restart?: () => { launcher: string; mode: 'now' | 'idle' }
 }
 
 /**
@@ -166,6 +168,28 @@ export function registerTotemCommands(
             text: conflicts === 0
               ? `Stored ${parsed.type} ${id}.`
               : `Stored ${parsed.type} ${id} with ${conflicts} possible conflict(s); see /memory.`,
+          }
+        } catch (error) {
+          return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
+        }
+      },
+    })
+
+    register({
+      name: 'restart',
+      description: 'Relaunch the DSH host, waiting for the running turn to finish.',
+      input: { hint: '(no input)' },
+      async handler(): Promise<Result> {
+        if (options.restart === undefined) {
+          return { kind: 'error', text: 'restart is not wired on this host' }
+        }
+        try {
+          const plan = options.restart()
+          return {
+            kind: 'success',
+            text: plan.mode === 'idle'
+              ? `Restart queued via ${plan.launcher}; it runs when this turn finishes.`
+              : `Restarting via ${plan.launcher}.`,
           }
         } catch (error) {
           return { kind: 'error', text: error instanceof Error ? error.message : String(error) }

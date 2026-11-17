@@ -73,6 +73,8 @@ export interface TotemConfig {
   clues: Volatile<boolean>
   /** Allow watches to fetch loopback/private addresses. */
   watchAllowPrivate: Volatile<boolean>
+  /** Launcher that restarts the host process; resolved against PATH. */
+  restartCommand: Volatile<string>
 }
 
 /** One observed file touch from a forked file tool. */

@@ -31,6 +31,7 @@ import { registerWorkflowSkills } from './skills.ts'
 import { registerRecallTool } from './recall.ts'
 import { ConflictInbox } from './conflicts.ts'
 import { VerifyLane, VerifyStore } from './verify-lane.ts'
+import { RestartController } from './restart.ts'
 import { budgetFor, clipToTokens } from './budget.ts'
 
 declare module '@deepseek-ai/dsh-llm' {
@@ -123,6 +124,8 @@ export interface Config {
   verifyCommand: Volatile<string>
   /** Deterministic verify rule ids to skip. */
   verifyDisable: Volatile<string[]>
+  /** Launcher that restarts the host process; resolved against PATH. */
+  restartCommand: Volatile<string>
 }
 
 /** Loader schema; every field is live so the Plugins page can edit it. */
@@ -167,6 +170,7 @@ export const Config: z<Config> = z.object({
   triageBatch: z.number().step(1).min(0).default(20),
   verifyCommand: z.string().default('').volatile(),
   verifyDisable: z.array(String).default([]).volatile(),
+  restartCommand: z.string().default('dsh-totem').volatile(),
 })
 
 export function resolveConfig(config: Config): TotemConfig {
@@ -207,6 +211,7 @@ export function resolveConfig(config: Config): TotemConfig {
     telegramChatId: config.telegramChatId,
     notifyTurnEnd: config.notifyTurnEnd,
     notifyApproval: config.notifyApproval,
+    restartCommand: config.restartCommand,
     distillTurn: config.distillTurn,
     distillTurnMinChars: config.distillTurnMinChars,
     coverage: config.coverage,
@@ -291,6 +296,22 @@ export function apply(ctx: Context, config: Config): void {
   })
 
   const conflicts = new ConflictInbox()
+  // Sessions with a turn in flight; a deferred restart waits for this to empty.
+  const running = new Set<string>()
+  const restarter = new RestartController({
+    launcher: () => totem.config.restartCommand.get(),
+    busy: () => running.size > 0,
+  })
+
+  // The turn boundary is the safe moment to relaunch: the buffer has been
+  // reported and the session events are written. `turn-stopping` also fires
+  // for aborted and failed turns, so a dead turn cannot pin the busy flag.
+  ctx.on('agent/turn-stopping', ({ agent }) => {
+    const id = (agent as { session?: { id?: string } }).session?.id
+    if (id !== undefined) running.delete(id)
+    restarter.tick()
+  })
+
   registerMemoryTools(ctx, totem, { conflicts })
   registerUserTools(ctx, totem)
   registerNotifyTool(ctx, totem)
@@ -303,6 +324,10 @@ export function apply(ctx: Context, config: Config): void {
       feedUrl: config.triageFeedUrl,
       windowDays: config.triageWindowDays,
       batch: config.triageBatch,
+    },
+    restart: () => {
+      const plan = restarter.schedule({ idle: true })
+      return { launcher: plan.launcher, mode: plan.mode }
     },
   })
   registerWorkflowSkills(ctx, totem)
@@ -324,7 +349,17 @@ export function apply(ctx: Context, config: Config): void {
   })
   const verifyStore = new VerifyStore()
 
-  registerAssistantRoutes(ctx, { totem, reminders, watches, candidates, verifyLane, verify: verifyStore, overview, conflicts })
+  registerAssistantRoutes(ctx, {
+    totem,
+    reminders,
+    watches,
+    candidates,
+    verifyLane,
+    verify: verifyStore,
+    overview,
+    conflicts,
+    restart: restarter,
+  })
   ctx.effect(() => { reminders.start(); return () => { reminders.stop() } }, 'dsh-totem: reminders')
   ctx.effect(() => { watches.start(); return () => { watches.stop() } }, 'dsh-totem: watches')
 
@@ -377,6 +412,7 @@ export function apply(ctx: Context, config: Config): void {
       }
     }
     if (event.type === 'turn/start') {
+      running.add(eventSessionId)
       const buffer = bufferFor(session)
       buffer.turn = (event.data as { turn?: number }).turn ?? 0
       buffer.messageId = undefined
@@ -458,6 +494,8 @@ export function apply(ctx: Context, config: Config): void {
         }
       }
     } else if (event.type === 'turn/end') {
+      running.delete(eventSessionId)
+      restarter.tick()
       const buffer = buffers.get(session)
       buffers.delete(session)
       if (buffer === undefined) return
