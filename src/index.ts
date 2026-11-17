@@ -205,6 +205,8 @@ export function resolveConfig(config: Config): TotemConfig {
     ntfyToken: config.ntfyToken,
     telegramBotToken: config.telegramBotToken,
     telegramChatId: config.telegramChatId,
+    notifyTurnEnd: config.notifyTurnEnd,
+    notifyApproval: config.notifyApproval,
     distillTurn: config.distillTurn,
     distillTurnMinChars: config.distillTurnMinChars,
     coverage: config.coverage,

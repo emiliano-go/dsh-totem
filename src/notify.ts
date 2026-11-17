@@ -84,6 +84,20 @@ export function hasNotificationChannel(config: TotemConfig): boolean {
     && config.telegramChatId.get().trim().length > 0
 }
 
+/**
+ * Read a volatile boolean, tolerating a config composed before the field
+ * existed. A patch row may supply only its own keys, so a flag can arrive
+ * `undefined`; calling `.get()` on it throws inside an awaited turn listener
+ * and the notification silently never happens.
+ */
+function flag(value: { get: () => boolean } | undefined, fallback: boolean): boolean {
+  try {
+    return value?.get() ?? fallback
+  } catch {
+    return fallback
+  }
+}
+
 /** Short label for a session: its cwd basename, else its id. */
 function sessionLabel(session: { id?: string; header?: { cwd?: string } } | undefined): string {
   const cwd = session?.header?.cwd ?? ''
@@ -107,31 +121,39 @@ function sessionLabel(session: { id?: string; header?: { cwd?: string } } | unde
  * interesting signal is the root session going quiet.
  */
 export function registerNotificationHooks(ctx: import('@deepseek-ai/cordis').Context, totem: TotemService): void {
+  const config = totem.config
+
   ctx.on('agent/turn-stopping', ({ agent, turn }) => {
-    const config = totem.config
-    if (!config.notifyTurnEnd.get() || !hasNotificationChannel(config)) return
-    if (agent.parentAgent !== undefined) return
-    const session = (agent as { session?: { id?: string; header?: { cwd?: string } } }).session
-    const cwd = session?.header?.cwd ?? ''
-    const lines = [`${sessionLabel(session)} · turn ${turn}`]
-    if (cwd.length > 0) lines.push(cwd)
-    void sendNotification(config, { title: 'DSH finished a turn', message: lines.join('\n') })
+    try {
+      if (!flag(config.notifyTurnEnd, true) || !hasNotificationChannel(config)) return
+      if (agent.parentAgent !== undefined) return
+      const session = (agent as { session?: { id?: string; header?: { cwd?: string } } }).session
+      const cwd = session?.header?.cwd ?? ''
+      const lines = [`${sessionLabel(session)} · turn ${turn}`]
+      if (cwd.length > 0) lines.push(cwd)
+      void sendNotification(config, { title: 'DSH finished a turn', message: lines.join('\n') })
+    } catch (error) {
+      console.error('[totem] turn-end notification failed:', error)
+    }
   })
 
   ctx.on('session/event', (session, event) => {
-    if ((event as { type?: string }).type !== 'approval/asked') return
-    const config = totem.config
-    if (!config.notifyApproval.get() || !hasNotificationChannel(config)) return
-    const data = (event as { data?: { toolName?: string; reason?: string } }).data ?? {}
-    const typed = session as { id?: string; header?: { cwd?: string } }
-    const lines = [`tool: ${data.toolName ?? 'unknown'}`]
-    if (data.reason !== undefined && data.reason.length > 0) lines.push(data.reason)
-    const cwd = typed.header?.cwd ?? ''
-    if (cwd.length > 0) lines.push(cwd)
-    void sendNotification(config, {
-      title: 'DSH needs approval',
-      message: lines.join('\n'),
-      priority: 'high',
-    })
+    try {
+      if ((event as { type?: string }).type !== 'approval/asked') return
+      if (!flag(config.notifyApproval, true) || !hasNotificationChannel(config)) return
+      const data = (event as { data?: { toolName?: string; reason?: string } }).data ?? {}
+      const typed = session as { id?: string; header?: { cwd?: string } }
+      const lines = [`tool: ${data.toolName ?? 'unknown'}`]
+      if (data.reason !== undefined && data.reason.length > 0) lines.push(data.reason)
+      const cwd = typed.header?.cwd ?? ''
+      if (cwd.length > 0) lines.push(cwd)
+      void sendNotification(config, {
+        title: 'DSH needs approval',
+        message: lines.join('\n'),
+        priority: 'high',
+      })
+    } catch (error) {
+      console.error('[totem] approval notification failed:', error)
+    }
   })
 }

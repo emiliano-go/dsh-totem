@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { resolveConfig } from '../src/index.ts'
+import { Config, resolveConfig } from '../src/index.ts'
 
 function base(overrides: Record<string, unknown> = {}): any {
   return {
@@ -46,4 +46,22 @@ test('maps a local model directory', () => {
 test('preferFileContext can be disabled', () => {
   const resolved = resolveConfig(base({ preferFileContext: false }))
   expect(resolved.preferFileContext).toBe(false)
+})
+
+test('every volatile config field reaches the resolved config', () => {
+  // Regression: `notifyTurnEnd` and `notifyApproval` were declared in Config
+  // and in TotemConfig but dropped by resolveConfig, so `.get()` on undefined
+  // threw inside the awaited `agent/turn-stopping` listener and failed the
+  // whole turn at its boundary.
+  const dict = (Config as unknown as {
+    dict: Record<string, { meta?: { volatile?: boolean } } | undefined>
+  }).dict
+  const volatileKeys = Object.keys(dict).filter(key => dict[key]?.meta?.volatile === true)
+  expect(volatileKeys.length).toBeGreaterThan(10)
+  // Read straight off the plugin config; never part of TotemConfig.
+  const consumedElsewhere = new Set(['embeddingBackend', 'verifyCommand', 'verifyDisable'])
+  const parsed = (Config as unknown as (value: unknown) => Record<string, unknown>)({ ntfyTopic: 'alerts' })
+  const resolved = resolveConfig(parsed as never) as unknown as Record<string, unknown>
+  const dropped = volatileKeys.filter(key => !consumedElsewhere.has(key) && resolved[key] !== parsed[key])
+  expect(dropped).toEqual([])
 })
