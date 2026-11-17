@@ -103,6 +103,22 @@
           BROWSER_USE_NO_UPDATE_CHECK: '1'
         toolCallTimeoutMs: 300000
 
+    # ── OpenMotion ──────────────────────────────────────────────────────────
+    # Motion runtime with its own MCP surface. `bun run extras:setup` clones
+    # and builds it into ~/.local/share/dsh-totem/open-motion. It is a long
+    # running app, so start it before the tools are useful:
+    #   (cd ~/.local/share/dsh-totem/open-motion && npm -w @openmotion/server run start)
+    # The web UI and the MCP endpoint share port 7000; set PORT before starting
+    # the server and change the url below to match.
+    - id: mcp-openmotion
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: openmotion
+        transport: streamable-http
+        url: http://127.0.0.1:7000/api/mcp
+        toolCallTimeoutMs: 120000
+        failOnStartupError: false
+
 - id: preset-standard
   name: '@deepseek-ai/dsh-agent-preset'
   config:

@@ -363,6 +363,46 @@ only connect servers you trust. Playwright runs headless with an in-memory
 isolated profile; browser-use attaches to the local Chrome/Chromium or a
 browser it starts itself.
 
+## Agent extras
+
+Three external tools extend what the agent can reach. `bun run extras:setup`
+installs them idempotently; `--check` prints the plan without touching
+anything, and `--skip-agent-reach`, `--skip-open-motion`, `--no-build`, and
+`--skip-skills` narrow the run.
+
+| Tool | How it reaches the agent | State |
+|---|---|---|
+| [Agent Reach](https://github.com/Panniantong/Agent-Reach) | CLI on `PATH`; its own skill is installed by `agent-reach setup` | Installed via `uv tool install` from the GitHub release zip |
+| [Modern Web Guidance](https://github.com/GoogleChrome/modern-web-guidance) | Skill (vendored, npx-driven) | Linked into `~/.agents/skills`; guides are fetched on demand |
+| [OpenMotion](https://github.com/Yuan-ManX/open-motion) | MCP over Streamable HTTP at `http://127.0.0.1:7000/api/mcp` | **Upstream does not build** — see below |
+
+Agent Reach is deliberately installed from the GitHub release asset: the
+PyPI package named `agent-reach` is a different project. It keeps its channels,
+logins and private tools in `~/.agent-reach/`; logged-in channels need
+`agent-reach login <channel>` once. It is read-only by design and needs no
+MCP wiring — the skill teaches the agent the `agent-reach <channel> <action>`
+form.
+
+Modern Web Guidance is a single SKILL.md with no local data files; it shells
+out to `npx -y modern-web-guidance@latest search|retrieve|legacy-scan`, so the
+guides stay current without vendoring them. The skill is mandatory for
+HTML/CSS and client-side JS work: it steers the agent away from patterns the
+model learned from older code.
+
+**OpenMotion is not usable yet.** `extras:setup` clones it to
+`~/.local/share/dsh-totem/open-motion` and installs its dependencies, but the
+published tree references files it never shipped (`server/routes/batch.ts`,
+`motion/templates/crystalCascade.ts`) and fails `tsc` with a dozen type errors,
+so neither `npm run build` nor a `tsx` dev run can start the server. The MCP
+entry is wired with `failOnStartupError: false`, so it simply stays
+unavailable instead of failing the profile. Once upstream builds, rerun
+`bun run extras:setup` and start the server with:
+
+```bash
+cd ~/.local/share/dsh-totem/open-motion
+npm -w @openmotion/server run start   # web UI + MCP on :7000
+```
+
 ## Workflow skills
 
 `memory_workflow` already stores procedures, but a database row is inert. When
@@ -372,10 +412,12 @@ is cheap discovery, the body is rendered from the stored steps and loaded on
 demand, and an edited workflow appears on the next catalog without an
 invalidation step.
 
-Four portable skills also ship under `.agents/skills/`, which the filesystem
+Five portable skills also ship under `.agents/skills/`, which the filesystem
 provider scans as a *project* root: `totem-memory-hygiene`,
-`totem-session-handoff`, `totem-conflict-resolution`, and `deep-research`.
-That makes them visible only in sessions whose cwd is inside this checkout.
+`totem-session-handoff`, `totem-conflict-resolution`, `deep-research`, and
+`modern-web-guidance`. A sixth, `agent-reach`, is installed by Agent Reach's
+own setup into the same directory. Project-root skills are visible only in
+sessions whose cwd is inside this checkout.
 Run `bun run skills:install` to link them into `~/.agents/skills`, which every
 session across every project scans; `bun run research:setup` does it too.
 Linking (rather than copying) keeps the global view in sync with the checkout.
