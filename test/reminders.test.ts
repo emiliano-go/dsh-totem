@@ -92,7 +92,9 @@ test('ack on an appointment silences the phase, not the day', async () => {
 })
 
 test('a due habit fires once and the ledger prevents a replay', async () => {
-  const reminders = service()
+  // No quiet window: the test runner may use a different TZ than the shell, and
+  // a silent habit inside quiet hours is deliberately held rather than fired.
+  const reminders = service('')
   const reminder = await reminders.add({
     text: 'Drink water',
     at: new Date(Date.now() - 5 * 60_000).toISOString(),

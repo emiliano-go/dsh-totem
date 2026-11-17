@@ -14,7 +14,7 @@
  *
  * @module dsh-totem/session-unread
  */
-import { clearStored, markStored, readUnread, writeUnread, type StorageLike, type UnreadRecord } from './unread-store.ts'
+import { clearStored, defaultStorage, markStored, readUnread, writeUnread, type StorageLike, type UnreadRecord } from './unread-store.ts'
 import type { UnreadRemote } from './unread-sync.ts'
 
 /** One status entry as published by the `uiSession` service. */
@@ -134,6 +134,9 @@ export class SessionUnreadController {
   private async reconcile(): Promise<void> {
     const remote = this.remote
     if (remote === undefined) return
+    // Callers normally omit `storage`; resolve the browser one here so the
+    // one-time migration flag is written to the same mirror apply() maintains.
+    const storage = this.storage ?? defaultStorage()
     // Retry marks the Host has not acknowledged yet before reading.
     for (const sessionId of [...this.pending]) await this.pushMark(sessionId)
     let items = await remote.list()
@@ -142,12 +145,12 @@ export class SessionUnreadController {
     // One-time migration: before the Host store existed, marks lived only in
     // this browser. Push them up on the first successful sync, then let the Host
     // win forever after, so a clear on another device is not resurrected.
-    if (this.storage?.getItem(UNREAD_SYNCED_KEY) !== '1') {
+    if (storage?.getItem(UNREAD_SYNCED_KEY) !== '1') {
       const remoteIds = new Set(items.map(item => item.sessionId))
-      for (const record of readUnread(this.storage)) {
+      for (const record of readUnread(storage)) {
         if (!remoteIds.has(record.sessionId)) await remote.mark(record.sessionId)
       }
-      this.storage?.setItem(UNREAD_SYNCED_KEY, '1')
+      storage?.setItem(UNREAD_SYNCED_KEY, '1')
       items = await remote.list() ?? items
     }
 

@@ -85,6 +85,12 @@ export function apply(ctx: ClientContext): void {
       if (typeof document === 'undefined') return () => {}
       const sync = (): void => { void controller.sync() }
       const timer = setInterval(sync, 20_000)
+      // The settings document that carries the API token loads asynchronously;
+      // the first sync can run before it is ready, so reconcile again on every
+      // settings update and once shortly after mount.
+      const form = ctx.configForms.get('totem')
+      const unsubscribe = form.subscribe?.(sync)
+      const initial = setTimeout(sync, 1500)
       const onVisible = (): void => {
         if (document.visibilityState === 'visible') sync()
       }
@@ -92,6 +98,8 @@ export function apply(ctx: ClientContext): void {
       document.addEventListener('visibilitychange', onVisible)
       return () => {
         clearInterval(timer)
+        clearTimeout(initial)
+        unsubscribe?.()
         window.removeEventListener?.('focus', sync)
         document.removeEventListener('visibilitychange', onVisible)
       }

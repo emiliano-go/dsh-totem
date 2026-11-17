@@ -32,7 +32,7 @@ export const UNREAD_KEY = 'dsh-totem:unread-sessions'
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 
 /** Browser storage when available, otherwise `undefined` (tests, SSR). */
-function defaultStorage(): StorageLike | undefined {
+export function defaultStorage(): StorageLike | undefined {
   try {
     return typeof localStorage === 'undefined' ? undefined : localStorage
   } catch {
