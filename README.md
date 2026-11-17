@@ -451,6 +451,39 @@ Resolution is deliberately local: Totem's own `resolve_conflict` tool needs the
 it, so the plugin records the knowledge instead of pretending to mutate a row it
 cannot address.
 
+## Reminders
+
+A reminder is *for* a moment (`dueAt`); the nudges around it are phases relative
+to that moment, so one reminder can escalate instead of firing once:
+
+| Kind | Schedule |
+|---|---|
+| `appointment` | daily for the week before (silent) → three times the day before → hourly through the last three hours and for one hour after |
+| `task` | daily, forever, until told it is done; priority climbs a step a day and it starts sounding on day three |
+| `deadline` | twice a day for three days → every 30 minutes in the last two hours → every 15 minutes for an hour after |
+| `habit` | one nudge at the time, re-arming daily at the same wall-clock time |
+| `countdown` | every six hours over the day before |
+
+Scheduling lives in `src/reminder-plan.ts` as pure functions (`dueSlots`,
+`nextSlot`, `rollRepeat`), which is what makes it testable without waiting for
+time to pass. Delivery is one 30-second loop; each tick records the slots it
+handled, so a restart cannot replay them and a long outage collapses into one
+notification rather than a flood. Per reminder there is a floor of ten minutes
+between notifications and a cap of six per day.
+
+Silent reminders map to ntfy `min`/`low` and never sound; loud ones map to
+`default`/`high`/`max`. Quiet hours (`quietHours`, default `22:00-08:00`) park
+silent slots until the window ends, while anything at priority ≥4 still fires.
+Acknowledging an appointment silences only the running phase (the day-of
+warnings survive); acknowledging a task skips to tomorrow, because a task
+reminder is supposed to keep nagging until it is done.
+
+The model-facing surface is `remind_me` (with `kind`, `priority`, `sound`,
+`repeat`), `reminder_list`, `reminder_ack`, `reminder_snooze`, and
+`reminder_cancel`; the workflow prompt tells the agent to read the computed
+schedule back so the cadence is agreed before it starts. The Reminders tab shows
+the next notification and its phase, with Ack/Snooze/Done/Cancel.
+
 ## Session recall
 
 `memory_recall_sessions` searches the summaries Totem writes at the end of each

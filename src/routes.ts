@@ -188,13 +188,14 @@ const routes = {
       if (resolved === undefined) throw Object.assign(new Error('conflict not found or already resolved'), { status: 404 })
       return { conflict: resolved }
     }
-    const reminder = /^\/totem\/reminders\/([^/]+)\/(snooze|done|cancel)$/u.exec(path)
+    const reminder = /^\/totem\/reminders\/([^/]+)\/(snooze|ack|done|cancel)$/u.exec(path)
     if (reminder !== null) {
       const id = decodeURIComponent(reminder[1])
       if (reminder[2] === 'snooze') {
         const minutes = Number(bodyValue.minutes ?? 10)
         return { snoozed: await deps.reminders.snooze(id, Number.isFinite(minutes) ? minutes : 10) }
       }
+      if (reminder[2] === 'ack') return { acknowledged: await deps.reminders.ack(id) }
       return reminder[2] === 'done'
         ? { done: await deps.reminders.done(id) }
         : { canceled: await deps.reminders.cancel(id) }

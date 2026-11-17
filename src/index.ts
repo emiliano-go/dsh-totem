@@ -126,6 +126,8 @@ export interface Config {
   verifyDisable: Volatile<string[]>
   /** Launcher that restarts the host process; resolved against PATH. */
   restartCommand: Volatile<string>
+  /** Local quiet window for silent reminders, e.g. "22:00-08:00"; empty disables it. */
+  quietHours: Volatile<string>
 }
 
 /** Loader schema; every field is live so the Plugins page can edit it. */
@@ -171,6 +173,7 @@ export const Config: z<Config> = z.object({
   verifyCommand: z.string().default('').volatile(),
   verifyDisable: z.array(String).default([]).volatile(),
   restartCommand: z.string().default('dsh-totem').volatile(),
+  quietHours: z.string().default('22:00-08:00').volatile(),
 })
 
 export function resolveConfig(config: Config): TotemConfig {
@@ -212,6 +215,7 @@ export function resolveConfig(config: Config): TotemConfig {
     notifyTurnEnd: config.notifyTurnEnd,
     notifyApproval: config.notifyApproval,
     restartCommand: config.restartCommand,
+    quietHours: config.quietHours,
     distillTurn: config.distillTurn,
     distillTurnMinChars: config.distillTurnMinChars,
     coverage: config.coverage,

@@ -30,9 +30,12 @@ export interface CandidateRow {
 export interface ReminderRow {
   id: string
   text: string
-  nextAt: string
-  recurrence: string
+  dueAt: string
+  kind: string
+  priority: number
   done: boolean
+  snoozedUntil?: string
+  next?: { at: string; label: string; priority: number }
 }
 
 /** A watch row. */
@@ -137,6 +140,7 @@ export interface AssistantFace {
   resolveConflict: (id: string, resolution: string) => void
   snooze: (id: string, minutes: number) => void
   doneReminder: (id: string) => void
+  ackReminder: (id: string) => void
   cancelReminder: (id: string) => void
   runWatch: (id: string) => void
   cancelWatch: (id: string) => void
@@ -211,6 +215,7 @@ export class AssistantController {
       },
       snooze: (id, minutes) => { void this.action(`/reminders/${encodeURIComponent(id)}/snooze`, 'Reminder snoozed.', { minutes }) },
       doneReminder: id => { void this.action(`/reminders/${encodeURIComponent(id)}/done`, 'Reminder done.') },
+      ackReminder: id => { void this.action(`/reminders/${encodeURIComponent(id)}/ack`, 'Notification acknowledged.') },
       cancelReminder: id => { void this.action(`/reminders/${encodeURIComponent(id)}/cancel`, 'Reminder canceled.') },
       runWatch: id => { void this.action(`/watches/${encodeURIComponent(id)}/run`, 'Watch checked.') },
       cancelWatch: id => { void this.action(`/watches/${encodeURIComponent(id)}/cancel`, 'Watch stopped.') },

@@ -23,4 +23,8 @@ The secondary memory model writes the durable text from the actual file change; 
 ## What to store explicitly
 
 Store non-obvious knowledge: surprising behavior, hidden invariants, naming conventions, why a decision was made, external constraints. Do not store what is obvious from a glance at the code. When the digest below is stale-prone, verify with \`memory_get\` or \`memory_search\` before relying on it.
+
+## Reminders
+
+When the user says they need to do something, or asks to be reminded, enqueue a reminder instead of storing a memory: \`remind_me\` with the *moment* it is for and a \`kind\` that picks the escalation — \`appointment\` (daily for a week, three times the day before, hourly through the day), \`task\` (daily until told it is done, getting louder), \`deadline\` (twice a day for three days, every 30 minutes in the final two hours), \`habit\`, or \`countdown\`. Read the returned schedule back to the user so the cadence is agreed, not assumed. \`reminder_list\` shows the next notification, \`reminder_ack\` silences the current phase, \`reminder_snooze\` pushes it back, and only \`reminder_cancel\` or the UI's Done stops a task for good.
 `

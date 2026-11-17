@@ -75,6 +75,8 @@ export interface TotemConfig {
   watchAllowPrivate: Volatile<boolean>
   /** Launcher that restarts the host process; resolved against PATH. */
   restartCommand: Volatile<string>
+  /** Local quiet window for silent reminders, e.g. "22:00-08:00"; empty disables it. */
+  quietHours: Volatile<string>
 }
 
 /** One observed file touch from a forked file tool. */

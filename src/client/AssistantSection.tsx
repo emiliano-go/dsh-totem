@@ -180,9 +180,16 @@ export function AssistantSection(props: AssistantSectionProps) {
               : state.reminders.map(reminder => (
                 <div key={reminder.id} style={CARD}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{reminder.text}</div>
-                  <p style={MUTED}>{new Date(reminder.nextAt).toLocaleString()} · {reminder.recurrence}</p>
+                  <p style={MUTED}>
+                    {reminder.kind}
+                    {reminder.next === undefined
+                      ? ' · no further notifications'
+                      : ` · next ${new Date(reminder.next.at).toLocaleString()} (${reminder.next.label})`}
+                    {reminder.snoozedUntil === undefined ? '' : ` · snoozed until ${new Date(reminder.snoozedUntil).toLocaleString()}`}
+                  </p>
                   <div style={ROW_ACTIONS}>
                     <Button variant="outline" onClick={() => { props.snooze(reminder.id, 10) }} disabled={state.writing}>Snooze 10m</Button>
+                    <Button variant="outline" onClick={() => { props.ackReminder(reminder.id) }} disabled={state.writing}>Ack</Button>
                     <Button variant="ghost" onClick={() => { props.doneReminder(reminder.id) }} disabled={state.writing}>Done</Button>
                     <Button variant="ghost" onClick={() => { props.cancelReminder(reminder.id) }} disabled={state.writing}>Cancel</Button>
                   </div>
