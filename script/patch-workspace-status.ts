@@ -26,10 +26,22 @@ if (!existsSync(file)) {
   process.exit(1)
 }
 
-const source = readFileSync(file, 'utf8')
-if (source.includes('function groupStatus(sessions, list, statuses, archived)')) {
-  console.log(`already patched: ${file}`)
-  process.exit(0)
+const current = readFileSync(file, 'utf8')
+const backup = `${file}.bak-totem`
+const patched = current.includes('function groupStatus(sessions, list, statuses, archived)')
+// A patched file is re-derived from its backup so an updated patch (for
+// example a smaller status badge) can be applied again. The backup is written
+// on the first patch and only replaced when the unpatched source changed (a DSH
+// upgrade), so it always matches the build being patched.
+let source = current
+if (patched) {
+  if (!existsSync(backup)) {
+    console.error(`already patched but no backup to re-derive from: ${backup}`)
+    process.exit(1)
+  }
+  source = readFileSync(backup, 'utf8')
+} else if (existsSync(backup)) {
+  writeFileSync(backup, current)
 }
 
 const groupStatus = `\t\tfunction runningChildCount(list, parentId, statuses) {
@@ -86,16 +98,19 @@ const folderWithStatus = `\t\t\t\t\t(0, react_jsx_runtime.jsx)("span", {
 \t\t\t\t\t\t\t"data-workspace-status": row.status.state,
 \t\t\t\t\t\t\tstyle: {
 \t\t\t\t\t\t\t\tposition: "absolute",
-\t\t\t\t\t\t\t\tright: -2,
-\t\t\t\t\t\t\t\tbottom: -2,
+\t\t\t\t\t\t\t\tright: -1,
+\t\t\t\t\t\t\t\tbottom: -1,
 \t\t\t\t\t\t\t\tdisplay: "grid",
 \t\t\t\t\t\t\t\tplaceItems: "center",
-\t\t\t\t\t\t\t\tpadding: 1,
+\t\t\t\t\t\t\t\tpadding: 0,
 \t\t\t\t\t\t\t\tborderRadius: 999,
 \t\t\t\t\t\t\t\tbackground: "var(--dsw-specific-sidebar-fill, var(--dsw-alias-bg-base))",
 \t\t\t\t\t\t\t\tpointerEvents: "none"
 \t\t\t\t\t\t\t},
-\t\t\t\t\t\t\tchildren: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, { state: row.status.dot })
+\t\t\t\t\t\t\tchildren: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, {
+								state: row.status.dot,
+								size: 8
+							})
 \t\t\t\t\t\t})]
 \t\t\t\t\t}),`
 
@@ -122,7 +137,6 @@ for (const [before, after] of replacements) {
   next = next.replace(before, after)
 }
 
-const backup = `${file}.bak-totem`
 if (!existsSync(backup)) writeFileSync(backup, source)
 writeFileSync(file, next)
 console.log(`patched ${file}`)

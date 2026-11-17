@@ -15,8 +15,9 @@ import { AssistantSection } from './AssistantSection.tsx'
 import { AssistantController } from './assistant-controller.ts'
 import { VerifyController } from './verify-card.ts'
 import { VerifyTurnCard } from './VerifyTurnCard.tsx'
-import { SessionUnreadAction, installSessionUnreadStyles } from './SessionUnreadAction.tsx'
+import { SessionUnreadIcon } from './SessionUnreadIcon.tsx'
 import { SessionUnreadController, type UiSessionLike } from './session-unread.ts'
+import { UNREAD_MENU_ORDER, unreadMenuActions, type ContextMenusLike } from './unread-menu.ts'
 import { OverviewPage } from './OverviewPage.tsx'
 import { OverviewIcon } from './OverviewIcon.tsx'
 import { OverviewController } from './overview.ts'
@@ -49,11 +50,14 @@ export function apply(ctx: ClientContext): void {
   )
   const overview = new OverviewController(ctx.configForms.get('totem'))
   // The green "done" dot is browser state (`uiSession.completionUnread`) with no
-  // built-in way back. This row action restores it, beside archive and pin, and
-  // persists the mark so it survives a reload.
-  installSessionUnreadStyles()
+  // built-in way back. The `...` menu restores it: unlike the row's hover strip,
+  // the menu exists on every input modality (touch included) and device. A mark
+  // is persisted so it also survives a reload.
+  ctx.effect(() => ctx.slots.inject('contextMenu.icon', () => ctx.slots.register({
+    name: 'contextMenu.icon',
+    key: 'totem.unread',
+  } as never, SessionUnreadIcon as never)), 'dsh-totem: unread menu icon')
   let unread: SessionUnreadController | undefined
-  const markUnread = (sessionId: string): void => { unread?.mark(sessionId) }
   // Wait for the session service instead of depending on it statically: the
   // settings UI must still work when no session UI is loaded. The call stays a
   // property access because cordis's `inject` uses `this`.
@@ -65,15 +69,28 @@ export function apply(ctx: ClientContext): void {
     unread = new SessionUnreadController(session)
     unread.restore()
     ctx.effect(() => unread?.watch() ?? (() => {}), 'dsh-totem: unread mark expiry')
+
+    // Native context-menu contribution: label, icon, ordering, and keyboard
+    // navigation come from the shared menu renderer.
+    const controller = unread
+    ;(ctx as unknown as {
+      inject?: (deps: readonly string[], callback: (inner: unknown) => void) => unknown
+    }).inject?.(['contextMenus'], (menuInner) => {
+      const menus = (menuInner as { contextMenus?: ContextMenusLike }).contextMenus
+      if (menus?.register === undefined) return
+      ctx.effect(() => menus.register({
+        id: 'totem.unread',
+        target: 'session',
+        order: UNREAD_MENU_ORDER,
+        observe: () => [session.sessionStatus],
+        resolve: target => unreadMenuActions(target, {
+          isCurrent: id => controller.isCurrent(id),
+          statusOf: id => session.sessionStatus.getSnapshot().get(id),
+          mark: id => controller.mark(id),
+        }),
+      }), 'dsh-totem: mark unread menu')
+    })
   })
-  ctx.effect(() => (ctx.slots as unknown as {
-    inject: (name: string, register: () => unknown) => () => void
-  }).inject('sidebar.workspaces.session.row.action', () => ctx.slots.register({
-    name: 'sidebar.workspaces.session.row.action',
-    id: 'totem-unread',
-    order: 150,
-    inject: () => ({ markUnread, isCurrent: (id: string) => unread?.isCurrent(id) ?? false }),
-  } as never, SessionUnreadAction as never)), 'dsh-totem: mark session unread')
 
   ctx.effect(() => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
     name: 'sidebar.panellist',

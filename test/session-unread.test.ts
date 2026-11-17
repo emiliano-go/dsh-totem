@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { SessionUnreadController, currentKey, type SessionStatusLike, type UiSessionLike } from '../src/client/session-unread.ts'
+import { UNREAD_MENU_ORDER, unreadMenuActions } from '../src/client/unread-menu.ts'
 import { UNREAD_KEY, isStoredUnread, markStored, readUnread, type StorageLike } from '../src/client/unread-store.ts'
 
 function fakeStorage(): StorageLike & { data: Map<string, string> } {
@@ -108,5 +109,54 @@ describe('unread controller', () => {
 describe('storage key', () => {
   test('is namespaced so another plugin cannot collide', () => {
     expect(UNREAD_KEY).toBe('dsh-totem:unread-sessions')
+  })
+})
+
+describe('unread menu action', () => {
+  const deps = (options: {
+    current?: string
+    status?: SessionStatusLike
+    marked?: string[]
+  } = {}) => {
+    const marked = options.marked ?? []
+    return {
+      marked,
+      deps: {
+        isCurrent: (id: string) => id === options.current,
+        statusOf: () => options.status,
+        mark: (id: string) => { marked.push(id); return true },
+      },
+    }
+  }
+
+  test('offers one native action for an idle session', () => {
+    const { deps: lookup } = deps({ status: { running: false, completionUnread: false } })
+    const actions = unreadMenuActions({ sessionId: 's1', displayTitle: 'One' }, lookup)
+    expect(actions).toHaveLength(1)
+    expect(actions[0].id).toBe('totem-unread')
+    expect(actions[0].label).toBe('Mark as unread')
+    expect(actions[0].icon).toEqual({ key: 'totem.unread' })
+  })
+
+  test('runs the marker against the captured session', () => {
+    const { deps: lookup, marked } = deps({ status: { running: false } })
+    unreadMenuActions({ sessionId: 's7', displayTitle: 'Seven' }, lookup)[0].run()
+    expect(marked).toEqual(['s7'])
+  })
+
+  test('declines running, already-unread, and open sessions', () => {
+    expect(unreadMenuActions({ sessionId: 's1', displayTitle: '' },
+      deps({ status: { running: true } }).deps)).toEqual([])
+    expect(unreadMenuActions({ sessionId: 's1', displayTitle: '' },
+      deps({ status: { running: false, completionUnread: true } }).deps)).toEqual([])
+    expect(unreadMenuActions({ sessionId: 's1', displayTitle: '' },
+      deps({ current: 's1', status: { running: false } }).deps)).toEqual([])
+    expect(unreadMenuActions({ sessionId: '', displayTitle: '' },
+      deps({ status: { running: false } }).deps)).toEqual([])
+  })
+
+  test('sits between fork and the session-id separator', () => {
+    expect(UNREAD_MENU_ORDER).toBeGreaterThan(300)
+    expect(UNREAD_MENU_ORDER).toBeLessThan(450)
   })
 })

@@ -101,13 +101,17 @@ function boot(options: { provider?: string; model?: string } = {}) {
     current: { getSnapshot: () => ({ key: unread.current }) },
     sessionStatus: { getSnapshot: () => statuses, subscribe: () => () => {} },
   }
+  const menus: any[] = []
+  const contextMenus = {
+    register: (contribution: any) => { menus.push(contribution); return () => {} },
+  }
   const ctx: any = {
     get: (id: string) => {
       expect(id).toBe('totem')
       return form
     },
     inject: (_deps: readonly string[], callback: (inner: any) => void) => {
-      callback({ uiSession })
+      callback({ uiSession, contextMenus })
       return () => {}
     },
     configForms: {
@@ -130,7 +134,7 @@ function boot(options: { provider?: string; model?: string } = {}) {
   }
   const exports = registered!.factory(platformRequire)
   exports.apply(ctx)
-  return { exports, slots, form, state, unread, statuses, uiSession }
+  return { exports, slots, form, state, unread, statuses, uiSession, menus }
 }
 
 test('apply registers the Totem memory page and the Assistant section', () => {
@@ -193,41 +197,39 @@ test('the turn card reads a TurnLocation owner value, not just a number', async 
   expect(turnNumberOf('6')).toBeUndefined()
 })
 
-test('the session row action restores the green unread dot', () => {
-  const { slots, unread } = boot()
-  const entry = slots.find(item => item.options.name === 'sidebar.workspaces.session.row.action')
-  expect(entry?.options.id).toBe('totem-unread')
-  const injected = entry!.options.inject()
-  const statuses = (status: Record<string, unknown>) =>
-    (selector: (map: Map<string, unknown>) => unknown) => selector(new Map([['s1', status]]))
-  const base = { sessionId: 's1', displayTitle: 'Session', ...injected }
+test('the session menu restores the green unread dot', () => {
+  const { menus, slots, unread, statuses } = boot()
+  const contribution = menus.find(menu => menu.id === 'totem.unread')
+  expect(contribution?.target).toBe('session')
+  // Native menu item, not a hover-only row button.
+  expect(slots.some(item => item.options.name === 'sidebar.workspaces.session.row.action')).toBe(false)
+  expect(slots.some(item => item.options.name === 'contextMenu.icon')).toBe(true)
 
+  statuses.set('s1', { running: false, completionUnread: false })
   fakeLocalStorage.clear()
-  const idle = entry!.component({ ...base, useSessionStatus: statuses({ running: false, completionUnread: false }) })
-  expect(idle?.type).toBe('button')
-  expect(idle?.props['aria-label']).toBe('Mark as unread')
-  idle.props.onClick({})
+  const actions = contribution!.resolve({ sessionId: 's1', displayTitle: 'Session' })
+  expect(actions).toHaveLength(1)
+  expect(actions[0].label).toBe('Mark as unread')
+  expect(actions[0].icon).toEqual({ key: 'totem.unread' })
+  actions[0].run()
   expect(unread.sessions.has('s1')).toBe(true)
   expect(unread.published).toBe(1)
   // The mark is persisted, so a reload can restore it.
   expect(fakeLocalStorage.getItem('dsh-totem:unread-sessions') ?? '').toContain('s1')
 
   // Nothing to restore while running or already unread.
-  expect(entry!.component({ ...base, useSessionStatus: statuses({ running: true }) })).toBeNull()
-  expect(entry!.component({ ...base, useSessionStatus: statuses({ completionUnread: true }) })).toBeNull()
+  statuses.set('s1', { running: true })
+  expect(contribution!.resolve({ sessionId: 's1', displayTitle: 'Session' })).toEqual([])
+  statuses.set('s1', { running: false, completionUnread: true })
+  expect(contribution!.resolve({ sessionId: 's1', displayTitle: 'Session' })).toEqual([])
 })
 
 test('a stored unread mark is restored on the next load', () => {
   fakeLocalStorage.clear()
   const first = boot()
-  const entry = first.slots.find(item => item.options.name === 'sidebar.workspaces.session.row.action')
-  const injected = entry!.options.inject()
-  const idle = entry!.component({
-    sessionId: 's9',
-    ...injected,
-    useSessionStatus: (selector: (map: Map<string, unknown>) => unknown) => selector(new Map([['s9', { running: false }]])),
-  })
-  idle.props.onClick({})
+  const contribution = first.menus.find(menu => menu.id === 'totem.unread')
+  first.statuses.set('s9', { running: false })
+  contribution!.resolve({ sessionId: 's9', displayTitle: 'Session' })[0].run()
   expect(first.unread.sessions.has('s9')).toBe(true)
 
   // A fresh page with the same storage brings the dot back without a click.
@@ -237,13 +239,9 @@ test('a stored unread mark is restored on the next load', () => {
 
 test('the open session offers no unread action', () => {
   fakeLocalStorage.clear()
-  const { slots, unread } = boot()
+  const { menus, unread, statuses } = boot()
   unread.current = 's1'
-  const entry = slots.find(item => item.options.name === 'sidebar.workspaces.session.row.action')
-  const node = entry!.component({
-    sessionId: 's1',
-    ...entry!.options.inject(),
-    useSessionStatus: (selector: (map: Map<string, unknown>) => unknown) => selector(new Map([['s1', { running: false }]])),
-  })
-  expect(node).toBeNull()
+  statuses.set('s1', { running: false })
+  const contribution = menus.find(menu => menu.id === 'totem.unread')
+  expect(contribution!.resolve({ sessionId: 's1', displayTitle: 'Session' })).toEqual([])
 })
