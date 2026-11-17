@@ -73,6 +73,45 @@ export function titleFor(statement: string): string {
   return first.slice(0, 120).trim() || statement.slice(0, 120)
 }
 
+/** Filesystem-safe slug for a research question. */
+export function researchSlug(question: string): string {
+  return question
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, '-')
+    .replace(/^-+|-+$/gu, '')
+    .slice(0, 48) || 'research'
+}
+
+/**
+ * Build the turn-steering prompt for `/research`.
+ *
+ * The skill carries the full protocol, but a profile that has not copied
+ * `.agents/skills` into `~/.agents/skills` will not see it, so the prompt
+ * repeats the non-negotiable parts: parallel query fan-out, full-page reads,
+ * recursive citation following, verification, and a cited report.
+ */
+export function researchPrompt(question: string, date = new Date().toISOString().slice(0, 10)): string {
+  const path = `research/${researchSlug(question)}-${date}.md`
+  return [
+    'Run a deep research task. Answer with evidence, not the first plausible page.',
+    '',
+    `Question: ${question}`,
+    '',
+    'If `deep-research` is in the skill catalog, load it first; it is the full protocol. Otherwise follow these steps:',
+    '1. Frame: restate the question, list 3-6 subquestions, and state what evidence would settle each.',
+    '2. Fan out: write 3-4 genuinely different queries per subquestion (canonical, exact phrase, site:primary-source, contrarian). Issue them in parallel in one turn.',
+    '3. Triage: prefer primary sources (specs, docs, repos, papers, filings) over SEO articles; drop syndicated duplicates.',
+    '4. Read: use mcp__searxncrawl__crawl for pages, crawl_site for docs sites, and mcp__cluefinch__web_fetch/web_links for chunked long documents and citation navigation. Never cite a snippet.',
+    '5. Recurse: follow cited primary sources up to depth 2; use mcp__cluefinch__web_links to choose links.',
+    '6. Gap loop: re-search missing or contradictory claims with new wording; report unresolved contradictions instead of hiding them.',
+    '7. Verify: each load-bearing claim needs one primary source or two independent secondary sources; record retrieval dates.',
+    '8. Report: answer first, then an evidence table with inline [S#] citations, a full source table (title, URL, type, date), and an explicit contradictions/gaps section. Distinguish fact, inference, and unverified.',
+    '',
+    'Default budget: 20 searches, 12 distinct pages read in full, recursion depth 2. State it if you exceed it.',
+    `Write the report to \`${path}\` in the session cwd and also answer inline.`,
+  ].join('\n')
+}
+
 function lines(items: unknown, limit = 8): string {
   if (!Array.isArray(items)) return ''
   return items.slice(0, limit).map((item) => {
@@ -255,6 +294,21 @@ export function registerTotemCommands(
         } catch (error) {
           return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
         }
+      },
+    })
+
+    register({
+      name: 'research',
+      description: 'Run a deep research task with the search/crawl MCP servers and produce a cited report.',
+      input: { hint: '<question>' },
+      async handler({ agent, rawInput }): Promise<Result> {
+        const question = rawInput.trim()
+        if (question.length === 0) return { kind: 'error', text: 'usage: /research <question>' }
+        agent.steer(createUserMessage({
+          content: [{ type: 'text', text: researchPrompt(question) }],
+          source: { kind: 'user' },
+        }))
+        return { kind: 'success', text: `Researching: ${question}` }
       },
     })
   })

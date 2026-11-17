@@ -6,6 +6,8 @@ import type { TotemService } from './service.ts'
 import type { CandidateService } from './candidates.ts'
 import type { ReminderService } from './reminders.ts'
 import type { WatchService } from './watches.ts'
+import type { VerifyLane, VerifyStore } from './verify-lane.ts'
+import { ruleCatalog } from './verify-lane.ts'
 import { sendNotification } from './notify.ts'
 import type { OverviewService } from './overview.ts'
 import type { ConflictInbox } from './conflicts.ts'
@@ -28,6 +30,8 @@ interface AssistantDeps {
   candidates: CandidateService
   overview: OverviewService
   conflicts: ConflictInbox
+  verify: VerifyStore
+  verifyLane: VerifyLane
 }
 
 function json(res: ServerResponse, status: number, value: unknown): void {
@@ -79,6 +83,19 @@ const routes = {
     deps: AssistantDeps,
   ): Promise<unknown> {
     if (path === '/totem/ping') return { ok: true }
+    if (path === '/totem/verify/rules') {
+      return {
+        rules: ruleCatalog(),
+        settings: {
+          command: deps.verifyLane.settings().command,
+          disable: deps.verifyLane.settings().disable,
+        },
+      }
+    }
+    if (path === '/totem/verify') {
+      const turn = Number(url.searchParams.get('turn') ?? '')
+      return { result: Number.isFinite(turn) ? deps.verify.forTurn(turn) ?? null : deps.verify.last() ?? null }
+    }
     if (path === '/totem/state') {
       return { lastProject: deps.totem.lastProject, userProject: await deps.totem.userProject() }
     }

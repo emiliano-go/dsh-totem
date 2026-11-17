@@ -76,3 +76,62 @@ export function registerNotifyTool(ctx: import('@deepseek-ai/cordis').Context, t
     },
   }))
 }
+
+/** True when at least one delivery channel has enough config to send. */
+export function hasNotificationChannel(config: TotemConfig): boolean {
+  if (config.ntfyTopic.get().trim().length > 0) return true
+  return config.telegramBotToken.get().trim().length > 0
+    && config.telegramChatId.get().trim().length > 0
+}
+
+/** Short label for a session: its cwd basename, else its id. */
+function sessionLabel(session: { id?: string; header?: { cwd?: string } } | undefined): string {
+  const cwd = session?.header?.cwd ?? ''
+  if (cwd.length > 0) {
+    const parts = cwd.split('/').filter(Boolean)
+    return parts[parts.length - 1] ?? cwd
+  }
+  return session?.id ?? 'session'
+}
+
+/**
+ * Notify on turn completion and on tool-approval requests.
+ *
+ * Both hooks are fire-and-forget. `agent/turn-stopping` is a *serial, awaited*
+ * event: the turn boundary does not commit until every listener returns, so a
+ * synchronous HTTP round-trip here would add push latency to every turn. The
+ * delivery promise is left unawaited and failures stay silent by design
+ * (`sendNotification` never throws).
+ *
+ * Subagent turns are skipped — one workflow can close dozens of them, and the
+ * interesting signal is the root session going quiet.
+ */
+export function registerNotificationHooks(ctx: import('@deepseek-ai/cordis').Context, totem: TotemService): void {
+  ctx.on('agent/turn-stopping', ({ agent, turn }) => {
+    const config = totem.config
+    if (!config.notifyTurnEnd.get() || !hasNotificationChannel(config)) return
+    if (agent.parentAgent !== undefined) return
+    const session = (agent as { session?: { id?: string; header?: { cwd?: string } } }).session
+    const cwd = session?.header?.cwd ?? ''
+    const lines = [`${sessionLabel(session)} · turn ${turn}`]
+    if (cwd.length > 0) lines.push(cwd)
+    void sendNotification(config, { title: 'DSH finished a turn', message: lines.join('\n') })
+  })
+
+  ctx.on('session/event', (session, event) => {
+    if ((event as { type?: string }).type !== 'approval/asked') return
+    const config = totem.config
+    if (!config.notifyApproval.get() || !hasNotificationChannel(config)) return
+    const data = (event as { data?: { toolName?: string; reason?: string } }).data ?? {}
+    const typed = session as { id?: string; header?: { cwd?: string } }
+    const lines = [`tool: ${data.toolName ?? 'unknown'}`]
+    if (data.reason !== undefined && data.reason.length > 0) lines.push(data.reason)
+    const cwd = typed.header?.cwd ?? ''
+    if (cwd.length > 0) lines.push(cwd)
+    void sendNotification(config, {
+      title: 'DSH needs approval',
+      message: lines.join('\n'),
+      priority: 'high',
+    })
+  })
+}

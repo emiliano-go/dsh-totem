@@ -11,6 +11,7 @@ const TABS: { id: AssistantTab; label: string }[] = [
   { id: 'reminders', label: 'Reminders' },
   { id: 'watches', label: 'Watches' },
   { id: 'notifications', label: 'Notifications' },
+  { id: 'verify', label: 'Verify' },
 ]
 
 const FIELD: React.CSSProperties = {
@@ -60,6 +61,10 @@ export function AssistantSection(props: AssistantSectionProps) {
     telegramChatId: state.config.telegramChatId ?? '',
   })
   const [watch, setWatch] = useState({ kind: 'page', url: '', condition: '', interval: '15' })
+  const [verifyDraft, setVerifyDraft] = useState({ command: state.verifyCommand, disable: state.verifyDisable })
+  useEffect(() => {
+    setVerifyDraft({ command: state.verifyCommand, disable: state.verifyDisable })
+  }, [state.verifyCommand, state.verifyDisable])
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '4px 0' }}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -267,6 +272,47 @@ export function AssistantSection(props: AssistantSectionProps) {
               <Button variant="primary" onClick={() => { props.saveConfig(draft) }} disabled={state.writing}>Save</Button>
               <Button variant="outline" onClick={props.testNotification} disabled={state.writing}>Send test</Button>
             </div>
+          </div>
+        )
+        : null}
+
+      {state.tab === 'verify'
+        ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={MUTED}>
+              Deterministic rules run at the end of every turn and warn only: a finding is reported in the
+              turn card, never enforced. No model is involved.
+            </p>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>Verify command (optional, run once per turn)</span>
+              <input
+                style={FIELD}
+                value={verifyDraft.command}
+                placeholder="e.g. bun test"
+                onChange={event => { setVerifyDraft({ ...verifyDraft, command: event.target.value }) }}
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>Disabled rules (comma separated ids)</span>
+              <input
+                style={FIELD}
+                value={verifyDraft.disable}
+                placeholder="e.g. debug-breakpoint"
+                onChange={event => { setVerifyDraft({ ...verifyDraft, disable: event.target.value }) }}
+              />
+            </label>
+            <div style={ROW_ACTIONS}>
+              <Button variant="primary" onClick={() => { props.saveVerify(verifyDraft.command, verifyDraft.disable) }} disabled={state.writing}>Save</Button>
+            </div>
+            <p style={MUTED}>{state.verifyRules.length} rule(s) active.</p>
+            {state.verifyRules.map(rule => (
+              <div key={rule.id} style={CARD}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>
+                  <code style={{ fontSize: 12 }}>{rule.id}</code> · <span style={{ fontSize: 11, color: rule.severity === 'high' ? 'var(--dsw-alias-state-error-primary, #e5484d)' : 'var(--dsw-alias-text-secondary, #9a9a9a)' }}>{rule.severity}</span>
+                </div>
+                <div style={{ fontSize: 13 }}>{rule.description}</div>
+              </div>
+            ))}
           </div>
         )
         : null}

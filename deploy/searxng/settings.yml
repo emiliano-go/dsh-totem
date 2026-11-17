@@ -1,0 +1,22 @@
+# SearXNG configuration for the dsh-totem research stack.
+#
+# The JSON API must stay enabled: searxNcrawl and Cluefinch both query
+# /search?format=json. The limiter is disabled because the instance binds to
+# loopback and is only used by the local agents; a public instance would need
+# it (and bot detection) back on.
+
+use_default_settings: true
+
+general:
+  instance_name: dsh-totem research
+
+server:
+  limiter: false
+  public_instance: false
+
+search:
+  safe_search: 0
+  autocomplete: ''
+  formats:
+    - html
+    - json

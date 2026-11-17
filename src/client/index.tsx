@@ -13,6 +13,8 @@ import { TotemMemoryCard } from './TotemMemoryCard.tsx'
 import { TotemMemoryCardController } from './controller.ts'
 import { AssistantSection } from './AssistantSection.tsx'
 import { AssistantController } from './assistant-controller.ts'
+import { VerifyController } from './verify-card.ts'
+import { VerifyTurnCard } from './VerifyTurnCard.tsx'
 import { SessionUnreadAction, installSessionUnreadStyles } from './SessionUnreadAction.tsx'
 import { SessionUnreadController, type UiSessionLike } from './session-unread.ts'
 import { OverviewPage } from './OverviewPage.tsx'
@@ -84,6 +86,18 @@ export function apply(ctx: ClientContext): void {
     key: 'overview',
     inject: () => ({ load: overview.load, importHistory: overview.importHistory }),
   }, OverviewPage)), 'dsh-totem: overview panel')
+
+  // Deterministic verification card: the Host ran the rules at turn end, the
+  // card only reads the stored findings back.
+  const verify = new VerifyController(ctx.configForms.get('totem'))
+  ctx.effect(() => (ctx.slots as unknown as {
+    inject: (name: string, register: () => unknown) => () => void
+  }).inject('conversation.chat.turnTail', () => ctx.slots.register({
+    name: 'conversation.chat.turnTail',
+    id: 'verify-turn',
+    order: 10,
+    inject: () => ({ lookupTurn: verify.lookupTurn }),
+  } as never, VerifyTurnCard as never)), 'dsh-totem: verify turn card')
 
   const assistant = new AssistantController(ctx.configForms.get('totem'), ctx)
   ctx.effect(() => () => { assistant.dispose() }, 'dsh-totem: assistant section lifetime')

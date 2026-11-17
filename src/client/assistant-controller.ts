@@ -2,6 +2,7 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SettingsFormScope } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { VerifyRuleRow } from './verify-card.ts'
 
 /** A Totem memory row. */
 export interface MemoryRow {
@@ -78,6 +79,8 @@ export interface AssistantConfig {
   ntfyToken?: string
   telegramBotToken?: string
   telegramChatId?: string
+  verifyCommand?: string
+  verifyDisable?: string[]
 }
 
 export type AssistantTab =
@@ -87,6 +90,7 @@ export type AssistantTab =
   | 'reminders'
   | 'watches'
   | 'notifications'
+  | 'verify'
 
 /** Snapshot rendered by the section. */
 export interface AssistantState {
@@ -104,6 +108,9 @@ export interface AssistantState {
   notice: string | null
   config: AssistantConfig
   writing: boolean
+  verifyRules: VerifyRuleRow[]
+  verifyCommand: string
+  verifyDisable: string
 }
 
 /** Registration-side face for the section. */
@@ -124,6 +131,7 @@ export interface AssistantFace {
   cancelWatch: (id: string) => void
   addWatch: (draft: { kind: string; url: string; condition: string; interval: string }) => void
   saveConfig: (values: AssistantConfig) => void
+  saveVerify: (command: string, disable: string) => void
   testNotification: () => void
 }
 
@@ -148,6 +156,9 @@ export class AssistantController {
   private conflictSummary: MemorySummary | null = null
   private reminders: ReminderRow[] = []
   private watches: WatchRow[] = []
+  private verifyRules: VerifyRuleRow[] = []
+  private verifyCommand = ''
+  private verifyDisable = ''
   private status: AssistantState['status'] = 'idle'
   private error: string | null = null
   private notice: string | null = null
@@ -190,9 +201,8 @@ export class AssistantController {
       cancelWatch: id => { void this.action(`/watches/${encodeURIComponent(id)}/cancel`, 'Watch stopped.') },
       addWatch: draft => { void this.addWatch(draft) },
       saveConfig: values => { void this.saveConfig(values) },
+      saveVerify: (command, disable) => { void this.saveVerify(command, disable) },
       testNotification: () => { void this.testNotification() },
-      localize: (task, diff) => this.localize(task, diff),
-      lastDiff: () => this.lastDiff(),
     }
   }
 
@@ -220,6 +230,9 @@ export class AssistantController {
       notice: this.notice,
       config: this.config(),
       writing: this.writing,
+      verifyRules: this.verifyRules,
+      verifyCommand: this.verifyCommand,
+      verifyDisable: this.verifyDisable,
     }
   }
 
@@ -287,6 +300,14 @@ export class AssistantController {
       } else if (this.tab === 'watches') {
         const data = await this.request<{ items: WatchRow[] }>('/watches')
         this.watches = data.items
+      } else if (this.tab === 'verify') {
+        const data = await this.request<{
+          rules: VerifyRuleRow[]
+          settings: { command: string; disable: string[] }
+        }>('/verify/rules')
+        this.verifyRules = data.rules
+        this.verifyCommand = data.settings.command
+        this.verifyDisable = data.settings.disable.join(', ')
       }
       this.status = 'ready'
     } catch (error) {
@@ -371,6 +392,23 @@ export class AssistantController {
     this.writing = false
     this.notice = ok ? 'Notification settings saved.' : null
     this.error = ok ? null : 'The Host did not accept the notification settings.'
+    this.publish()
+  }
+
+  private async saveVerify(command: string, disable: string): Promise<void> {
+    const snapshot = this.form.getSnapshot()
+    const ids = disable.split(',').map(part => part.trim()).filter(Boolean)
+    this.writing = true
+    this.publish()
+    const ok = await this.form.mutate([
+      { op: 'set' as const, path: ['verifyCommand'], value: command as never },
+      { op: 'set' as const, path: ['verifyDisable'], value: ids as never },
+    ], snapshot.revision)
+    this.writing = false
+    this.verifyCommand = command
+    this.verifyDisable = ids.join(', ')
+    this.notice = ok ? 'Verification settings saved.' : null
+    this.error = ok ? null : 'The Host did not accept the verification settings.'
     this.publish()
   }
 

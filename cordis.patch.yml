@@ -32,6 +32,77 @@
         timeoutMs: 15000
         debug: false
 
+    # ── Research and browser MCP servers ────────────────────────────────────
+    # One research pipeline, not a pile of search MCPs:
+    #   searxncrawl  discovery + page/site Markdown extraction (SearXNG)
+    #   cluefinch    chunked full-text reading + link navigation + collection
+    #   playwright   deterministic Chromium control for JS/auth pages
+    #   browser-use  agentic browsing via a Python REPL against a live browser
+    #
+    # The search servers need SearXNG with the JSON API enabled. Start the
+    # bundled instance with `docker compose up -d` in deploy/searxng, or point
+    # SEARXNG_URL / MCP_SEARCH_SEARXNG_URL at a remote instance (for example
+    # one hosted on solsticio). `uvx` and `npx` must be on the Host PATH.
+    # Browser servers need Chromium: `bun run research:setup` installs it.
+
+    - id: mcp-searxncrawl
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: searxncrawl
+        transport: stdio
+        command: uvx
+        args:
+          - searxncrawl
+        env:
+          SEARXNG_URL: http://127.0.0.1:8888
+          LOG_LEVEL: WARNING
+        toolCallTimeoutMs: 180000
+
+    - id: mcp-cluefinch
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: cluefinch
+        transport: stdio
+        command: uvx
+        args:
+          - --from
+          - cluefinch
+          - cluefinch
+        env:
+          MCP_SEARCH_SEARXNG_URL: http://127.0.0.1:8888
+        toolCallTimeoutMs: 180000
+
+    - id: mcp-playwright
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: playwright
+        transport: stdio
+        command: npx
+        args:
+          - -y
+          - '@playwright/mcp@latest'
+          - --headless
+          - --isolated
+          - --browser
+          - chromium
+        toolCallTimeoutMs: 120000
+
+    - id: mcp-browser-use
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: browser-use
+        transport: stdio
+        command: uvx
+        args:
+          - --from
+          - 'browser-use[cli]'
+          - browser-use
+          - --cli-mcp
+        env:
+          ANONYMIZED_TELEMETRY: 'false'
+          BROWSER_USE_NO_UPDATE_CHECK: '1'
+        toolCallTimeoutMs: 300000
+
 - id: preset-standard
   name: '@deepseek-ai/dsh-agent-preset'
   config:

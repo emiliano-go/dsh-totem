@@ -35,7 +35,9 @@
   },
   "scripts": {
     "build": "bun run build.ts",
-    "eval": "bun run script/eval.ts"
+    "eval": "bun run script/eval.ts",
+    "research:setup": "bun run script/research-setup.ts",
+    "research:verify": "bun run script/verify-research.ts"
   },
   "dependencies": {
     "diff": "^9.0.0",

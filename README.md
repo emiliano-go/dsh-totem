@@ -2,7 +2,7 @@
 
 Totem persistent engineering memory for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
-This bundle does six things:
+This bundle does seven things:
 
 1. **Native memory tools.** `memory_search`, `memory_get`, `memory_list`, `memory_create`, `memory_update`, `memory_delete`, `memory_recent`, `memory_tasks`, `memory_commands`, `memory_relate`, `memory_relations`, `memory_history`, `memory_verify`, `memory_check_record`, `memory_audit`, `engineering_context`, `memory_export`, `memory_import`, `memory_feedback`, `memory_feedback_list`, `memory_train_models`, `memory_consolidate`, `memory_recall_sessions`, `memory_conflicts`, `memory_resolve_conflict`, `memory_eval`; proxied to the Totem MCP server over one lazy stdio connection.
 2. **Memory-gated file tools.** A fork of `@deepseek-ai/dsh-tool-fs`: `read`, `write`, `edit`, and `apply_patch` require a `memory` argument (`{ kind: "register", symbol?: "<name>" }`). After each successful touch the service registers the file (and each changed symbol, for writes) in Totem.
@@ -22,6 +22,12 @@ A workflow prompt section and a first-step recent-memory digest are also mounted
 6. **Conflict inbox and evaluation.** Contradictions reported by a write are
    kept for review in the Web GUI and resolvable from the model or the human,
    and `bun run eval` gates ranking quality on a golden case file.
+7. **Research and browser MCP servers.** One research pipeline instead of a
+   pile of search servers: SearXNG-backed discovery and extraction
+   (`searxncrawl`), chunked reading and citation navigation (`cluefinch`),
+   deterministic browser control (`playwright`), and agentic browsing
+   (`browser-use`). The `deep-research` skill and `/research` command encode
+   the investigation protocol.
 
 ## Requirements
 
@@ -239,8 +245,8 @@ Host, no model, no GPU — which is also how the rules are tested.
 
 Registered when the profile mounts `dsh-commands`; a profile without a command
 surface simply gets none. Most commands run directly against the agent and
-never become a model message; `/triage` is the deliberate exception, because
-the evidence work needs a real agent turn.
+never become a model message; `/triage` and `/research` are the deliberate
+exceptions, because the evidence work needs a real agent turn.
 
 | Command | Effect |
 |---|---|
@@ -250,6 +256,7 @@ the evidence work needs a real agent turn.
 | `/memory` | Active/archived counts, open conflicts, and stale evidence. |
 | `/handoff <summary>` | Store a session handoff before the context is compacted. |
 | `/triage [7d\|30\|YYYY-MM-DD\|all] [--limit N]` | Queue a model turn that triages untriaged TrustSight watcher alerts and records each one in `alert-triage/ledger.jsonl`. |
+| `/research <question>` | Queue a model turn that runs the deep-research protocol and writes a cited report to `research/<slug>-<date>.md`. |
 
 ### TrustSight triage
 
@@ -295,6 +302,65 @@ Alert titles, headlines, and package names are treated as untrusted feed text:
 they are sanitized into the queue file and the prompt forbids following
 instructions found inside them.
 
+## Research pipeline
+
+The bundle wires four MCP servers in `cordis.patch.yml` — one pipeline, not a
+separate server per search engine:
+
+| Server | Tools | Role |
+|---|---|---|
+| `searxncrawl` | `search`, `crawl`, `crawl_site` | Multi-engine discovery through SearXNG, page and whole-site Markdown extraction. |
+| `cluefinch` | `web_search`, `web_fetch`, `web_links`, `research_collect` | Chunked full-text reading, source navigation, bounded multi-source collection. |
+| `playwright` | `browser_*` (25 tools) | Deterministic Chromium control for JS-rendered, authenticated, or interactive pages. |
+| `browser-use` | `browser_exec`, `browser_feedback` | Agentic browsing: Python against a live browser session. |
+
+Search splits the work: `searxncrawl` for discovery and bulk extraction,
+`cluefinch` for reading long primary sources in chunks and following their
+links. Browser servers are the fallback for pages that need JavaScript or a
+session.
+
+### Setup
+
+```bash
+bun run research:setup     # SearXNG, matching Chromium, warm uvx/npx caches
+bun run research:verify    # handshake + one live search per search server
+bun run research:verify --browsers   # also navigate and drive a browser
+```
+
+`research:setup` starts the bundled SearXNG (`deploy/searxng/compose.yaml`,
+loopback on port 8888, JSON API enabled) and installs the Chromium revision
+that `@playwright/mcp` pins. It is idempotent.
+
+To use a SearXNG hosted elsewhere — for example on `solsticio` — start the
+compose file there and change `SEARXNG_URL` / `MCP_SEARCH_SEARXNG_URL` in
+`cordis.patch.yml`, or export `SEARXNG_URL` before `research:setup` and
+`research:verify`. The container uses host networking because Docker's
+embedded DNS on user-defined bridges cannot reach a systemd-resolved stub
+listening on `127.0.0.53`; the bind address keeps the port loopback-only.
+
+SearXNG needs `formats: [html, json]`; the bundled settings file already
+enables both. A public instance should re-enable the limiter.
+
+### The protocol
+
+`/research <question>` steers one agent turn through the pipeline: decompose
+the question, fan out 3–4 query variants per subquestion in parallel, prefer
+primary sources, read whole pages, follow cited sources to depth 2, re-search
+gaps and contradictions, verify load-bearing claims against independent
+sources, and write a report with inline `[S#]` citations and a full source
+table. The full version is the portable `deep-research` skill under
+`.agents/skills/`; copy that directory to `~/.agents/skills` to use it in every
+project.
+
+### Security
+
+`playwright` exposes `browser_run_code_unsafe`, and `browser-use` exposes
+`browser_exec`: both execute arbitrary code inside the MCP server process,
+which runs outside the DSH file sandbox. Treat them like the shell tool and
+only connect servers you trust. Playwright runs headless with an in-memory
+isolated profile; browser-use attaches to the local Chrome/Chromium or a
+browser it starts itself.
+
 ## Workflow skills
 
 `memory_workflow` already stores procedures, but a database row is inert. When
@@ -304,10 +370,10 @@ is cheap discovery, the body is rendered from the stored steps and loaded on
 demand, and an edited workflow appears on the next catalog without an
 invalidation step.
 
-Three portable skills also ship under `.agents/skills/`, which the filesystem
+Four portable skills also ship under `.agents/skills/`, which the filesystem
 provider scans automatically: `totem-memory-hygiene`, `totem-session-handoff`,
-and `totem-conflict-resolution`. Copy that directory to `~/.agents/skills` to
-make them available in every project.
+`totem-conflict-resolution`, and `deep-research`. Copy that directory to
+`~/.agents/skills` to make them available in every project.
 
 ## Conflict inbox
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { budgetFor, bulletBlock, clipToTokens, estimateTokens } from '../src/budget.ts'
 import { CompactionMemory, formatRecovery, isCompactionEvent } from '../src/compaction.ts'
-import { parseRemember, titleFor } from '../src/commands.ts'
+import { parseRemember, researchPrompt, researchSlug, titleFor } from '../src/commands.ts'
 import { isWorkflow, renderSkill, skillName } from '../src/skills.ts'
 import { isSessionSummary, recallSessions, toRecalled } from '../src/recall.ts'
 
@@ -35,6 +35,24 @@ describe('budget', () => {
     const lines = bulletBlock(items, 30)
     expect(lines.length).toBeGreaterThan(0)
     expect(estimateTokens(lines.join('\n'))).toBeLessThanOrEqual(30)
+  })
+})
+
+describe('research command', () => {
+  test('slug is filesystem-safe and bounded', () => {
+    expect(researchSlug('How does SearXNG JSON output work?')).toBe('how-does-searxng-json-output-work')
+    expect(researchSlug('¿?¡!')).toBe('research')
+    expect(researchSlug('a'.repeat(80)).length).toBe(48)
+  })
+
+  test('prompt names the toolchain, the budget, and the report path', () => {
+    const prompt = researchPrompt('Compare A and B', '2026-11-17')
+    expect(prompt).toContain('Compare A and B')
+    expect(prompt).toContain('mcp__searxncrawl__crawl')
+    expect(prompt).toContain('mcp__cluefinch__web_fetch')
+    expect(prompt).toContain('20 searches')
+    expect(prompt).toContain('research/compare-a-and-b-2026-11-17.md')
+    expect(prompt).toContain('[S#]')
   })
 })
 

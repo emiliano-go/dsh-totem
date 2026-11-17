@@ -10,3 +10,9 @@ coverage/
 *.db-wal
 *.db-shm
 .tmp-*/
+
+# research stack secrets
+deploy/searxng/.env
+
+# Playwright MCP snapshot output
+.playwright-mcp/

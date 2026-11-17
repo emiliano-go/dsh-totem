@@ -59,6 +59,10 @@ export interface TotemConfig {
   telegramBotToken: Volatile<string>
   /** Telegram chat id. */
   telegramChatId: Volatile<string>
+  /** Send a push notification when a turn finishes. */
+  notifyTurnEnd: Volatile<boolean>
+  /** Send a push notification when a tool approval is requested. */
+  notifyApproval: Volatile<boolean>
   /** Distill a turn into memory candidates at turn end. */
   distillTurn: Volatile<boolean>
   /** Minimum assistant text length for turn distillation. */

@@ -20,7 +20,7 @@ import { clueSeeds, generateClues } from './clues.ts'
 import { ReminderService, registerReminderTools } from './reminders.ts'
 import { WatchService, registerWatchTools } from './watches.ts'
 import { registerAssistantRoutes } from './routes.ts'
-import { registerNotifyTool } from './notify.ts'
+import { registerNotificationHooks, registerNotifyTool } from './notify.ts'
 import { registerCiTools } from './ci.ts'
 import { OverviewService } from './overview.ts'
 import { statePath } from './store.ts'
@@ -30,6 +30,7 @@ import { registerTotemCommands } from './commands.ts'
 import { registerWorkflowSkills } from './skills.ts'
 import { registerRecallTool } from './recall.ts'
 import { ConflictInbox } from './conflicts.ts'
+import { VerifyLane, VerifyStore } from './verify-lane.ts'
 import { budgetFor, clipToTokens } from './budget.ts'
 
 declare module '@deepseek-ai/dsh-llm' {
@@ -104,6 +105,10 @@ export interface Config {
   telegramBotToken: Volatile<string>
   /** Telegram chat id. */
   telegramChatId: Volatile<string>
+  /** Send a push notification when a turn finishes. */
+  notifyTurnEnd: Volatile<boolean>
+  /** Send a push notification when a tool approval is requested. */
+  notifyApproval: Volatile<boolean>
   /** Allow watches to fetch loopback/private addresses. */
   watchAllowPrivate: Volatile<boolean>
   /** Directory for TrustSight triage artifacts; empty uses `<session cwd>/alert-triage`. */
@@ -114,6 +119,10 @@ export interface Config {
   triageWindowDays: number
   /** Maximum alerts queued per `/triage` run; `0` queues every untriaged alert. */
   triageBatch: number
+  /** Deterministic verify command run once per turn; empty disables the command. */
+  verifyCommand: Volatile<string>
+  /** Deterministic verify rule ids to skip. */
+  verifyDisable: Volatile<string[]>
 }
 
 /** Loader schema; every field is live so the Plugins page can edit it. */
@@ -149,11 +158,15 @@ export const Config: z<Config> = z.object({
   ntfyToken: z.string().default('').volatile(),
   telegramBotToken: z.string().default('').volatile(),
   telegramChatId: z.string().default('').volatile(),
+  notifyTurnEnd: z.boolean().default(true).volatile(),
+  notifyApproval: z.boolean().default(true).volatile(),
   watchAllowPrivate: z.boolean().default(false).volatile(),
   triageDir: z.string().default(''),
   triageFeedUrl: z.string().default(''),
   triageWindowDays: z.number().step(1).min(1).default(7),
   triageBatch: z.number().step(1).min(0).default(20),
+  verifyCommand: z.string().default('').volatile(),
+  verifyDisable: z.array(String).default([]).volatile(),
 })
 
 export function resolveConfig(config: Config): TotemConfig {
@@ -279,6 +292,7 @@ export function apply(ctx: Context, config: Config): void {
   registerMemoryTools(ctx, totem, { conflicts })
   registerUserTools(ctx, totem)
   registerNotifyTool(ctx, totem)
+  registerNotificationHooks(ctx, totem)
   registerCiTools(ctx)
   registerRecallTool(ctx, totem)
   registerTotemCommands(ctx, totem, {
@@ -300,9 +314,18 @@ export function apply(ctx: Context, config: Config): void {
   registerWatchTools(ctx, watches)
   const overview = new OverviewService(statePath('usage.jsonl'))
   void overview.ensure()
-  registerAssistantRoutes(ctx, { totem, reminders, watches, candidates, overview, conflicts })
+  // Deterministic verification: the rules that used to run inside the judge,
+  // now wired to the turn itself. Advisory only.
+  const verifyLane = new VerifyLane({
+    command: config.verifyCommand,
+    disable: config.verifyDisable,
+  })
+  const verifyStore = new VerifyStore()
+
+  registerAssistantRoutes(ctx, { totem, reminders, watches, candidates, verifyLane, verify: verifyStore, overview, conflicts })
   ctx.effect(() => { reminders.start(); return () => { reminders.stop() } }, 'dsh-totem: reminders')
   ctx.effect(() => { watches.start(); return () => { watches.stop() } }, 'dsh-totem: watches')
+
 
   // Buffer each turn for candidate distillation and durable session summaries.
   interface TurnBuffer {
@@ -454,6 +477,28 @@ export function apply(ctx: Context, config: Config): void {
         changes: buffer.changes.map(change => ({ path: change.path, tool: change.tool })),
         checks: buffer.checks,
       })
+    }
+  })
+
+  // Advisory verification at turn end. Never blocks, never retries, never
+  // rewrites the turn: the findings are only stored for the in-chat card.
+  ctx.on('agent/turn-stopping', async ({ agent, turn }) => {
+    const session = (agent as { session?: object }).session
+    if (session === undefined) return
+    const buffer = buffers.get(session)
+    if (buffer === undefined) return
+    const header = (session as { header?: { cwd?: string } }).header
+    try {
+      verifyStore.add(await verifyLane.run({
+        session: (session as { id?: string }).id ?? '',
+        turn,
+        changes: buffer.changes,
+        checks: buffer.checks,
+        answer: buffer.texts.join('\n\n'),
+        ...header?.cwd === undefined ? {} : { project: header.cwd },
+      }))
+    } catch {
+      // A rule that throws must not break the turn; the lane is advisory.
     }
   })
 
