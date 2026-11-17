@@ -22,6 +22,7 @@ import { WatchService, registerWatchTools } from './watches.ts'
 import { registerAssistantRoutes } from './routes.ts'
 import { registerNotificationHooks, registerNotifyTool } from './notify.ts'
 import { registerCiTools } from './ci.ts'
+import { UnreadStore } from './unread.ts'
 import { OverviewService } from './overview.ts'
 import { statePath } from './store.ts'
 import { MEMORY_PROMPT } from './prompt.ts'
@@ -352,12 +353,16 @@ export function apply(ctx: Context, config: Config): void {
     disable: config.verifyDisable,
   })
   const verifyStore = new VerifyStore()
+  // Shared across browser profiles and devices; the client keeps a local
+  // mirror for reloads and reconciles against this on load/focus/poll.
+  const unread = new UnreadStore()
 
   registerAssistantRoutes(ctx, {
     totem,
     reminders,
     watches,
     candidates,
+    unread,
     verifyLane,
     verify: verifyStore,
     overview,

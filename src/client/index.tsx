@@ -17,6 +17,7 @@ import { VerifyController } from './verify-card.ts'
 import { VerifyTurnCard } from './VerifyTurnCard.tsx'
 import { SessionUnreadIcon } from './SessionUnreadIcon.tsx'
 import { SessionUnreadController, type UiSessionLike } from './session-unread.ts'
+import { UnreadApi } from './unread-sync.ts'
 import { UNREAD_MENU_ORDER, unreadMenuActions, type ContextMenusLike } from './unread-menu.ts'
 import { OverviewPage } from './OverviewPage.tsx'
 import { OverviewIcon } from './OverviewIcon.tsx'
@@ -66,13 +67,36 @@ export function apply(ctx: ClientContext): void {
   }).inject?.(['uiSession'], (inner) => {
     const session = (inner as { uiSession?: UiSessionLike }).uiSession
     if (session?.completionUnread === undefined) return
-    unread = new SessionUnreadController(session)
+    unread = new SessionUnreadController(session, undefined, new UnreadApi(() => {
+      const value = (ctx.configForms.get('totem').getSnapshot().value ?? {}) as { apiToken?: string }
+      return value.apiToken ?? ''
+    }))
     unread.restore()
     ctx.effect(() => unread?.watch() ?? (() => {}), 'dsh-totem: unread mark expiry')
 
     // Native context-menu contribution: label, icon, ordering, and keyboard
     // navigation come from the shared menu renderer.
     const controller = unread
+    // Reconcile across devices on load, on window focus, when the tab becomes
+    // visible, and on a slow poll. `sync()` serializes its own runs, so the
+    // fast bursts cannot overlap.
+    ctx.effect(() => {
+      void controller.sync()
+      if (typeof document === 'undefined') return () => {}
+      const sync = (): void => { void controller.sync() }
+      const timer = setInterval(sync, 20_000)
+      const onVisible = (): void => {
+        if (document.visibilityState === 'visible') sync()
+      }
+      window.addEventListener?.('focus', sync)
+      document.addEventListener('visibilitychange', onVisible)
+      return () => {
+        clearInterval(timer)
+        window.removeEventListener?.('focus', sync)
+        document.removeEventListener('visibilitychange', onVisible)
+      }
+    }, 'dsh-totem: unread cross-device sync')
+
     ;(ctx as unknown as {
       inject?: (deps: readonly string[], callback: (inner: unknown) => void) => unknown
     }).inject?.(['contextMenus'], (menuInner) => {

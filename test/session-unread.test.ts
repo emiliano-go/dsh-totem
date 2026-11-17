@@ -1,7 +1,14 @@
 import { describe, expect, test } from 'bun:test'
-import { SessionUnreadController, currentKey, type SessionStatusLike, type UiSessionLike } from '../src/client/session-unread.ts'
+import {
+  SessionUnreadController,
+  UNREAD_SYNCED_KEY,
+  currentKey,
+  type SessionStatusLike,
+  type UiSessionLike,
+} from '../src/client/session-unread.ts'
 import { UNREAD_MENU_ORDER, unreadMenuActions } from '../src/client/unread-menu.ts'
-import { UNREAD_KEY, isStoredUnread, markStored, readUnread, type StorageLike } from '../src/client/unread-store.ts'
+import type { UnreadRemote } from '../src/client/unread-sync.ts'
+import { UNREAD_KEY, isStoredUnread, markStored, readUnread, type StorageLike, type UnreadRecord } from '../src/client/unread-store.ts'
 
 function fakeStorage(): StorageLike & { data: Map<string, string> } {
   const data = new Map<string, string>()
@@ -109,6 +116,133 @@ describe('unread controller', () => {
 describe('storage key', () => {
   test('is namespaced so another plugin cannot collide', () => {
     expect(UNREAD_KEY).toBe('dsh-totem:unread-sessions')
+  })
+})
+
+function settle(ms = 10): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function fakeRemote(initial: UnreadRecord[] = []) {
+  let items = [...initial]
+  const calls = { mark: [] as string[], clear: [] as string[][] }
+  const remote: UnreadRemote = {
+    list: async () => items,
+    mark: async (sessionId) => {
+      calls.mark.push(sessionId)
+      items = [{ sessionId, markedAt: Date.now() }, ...items.filter(item => item.sessionId !== sessionId)]
+      return items
+    },
+    clear: async (sessionIds) => {
+      calls.clear.push([...sessionIds])
+      items = items.filter(item => !sessionIds.includes(item.sessionId))
+      return items
+    },
+  }
+  return { remote, calls, get: () => items, set: (next: UnreadRecord[]) => { items = next } }
+}
+
+describe('cross-device sync', () => {
+  test('a mark made on another device appears after sync', async () => {
+    const storage = fakeStorage()
+    storage.setItem(UNREAD_SYNCED_KEY, '1')
+    const { session, state } = fakeSession()
+    const host = fakeRemote([{ sessionId: 'phone', markedAt: Date.now() }])
+
+    await new SessionUnreadController(session, storage, host.remote).sync()
+    expect(state.completionUnread.has('phone')).toBe(true)
+    expect(isStoredUnread('phone', storage)).toBe(true)
+  })
+
+  test('a mark cleared on another device disappears here', async () => {
+    const storage = fakeStorage()
+    storage.setItem(UNREAD_SYNCED_KEY, '1')
+    markStored('gone', storage)
+    const { session, state } = fakeSession()
+    state.completionUnread.add('gone')
+
+    await new SessionUnreadController(session, storage, fakeRemote().remote).sync()
+    expect(state.completionUnread.has('gone')).toBe(false)
+    expect(isStoredUnread('gone', storage)).toBe(false)
+  })
+
+  test('automatic completion dots are left alone', async () => {
+    const storage = fakeStorage()
+    storage.setItem(UNREAD_SYNCED_KEY, '1')
+    const { session, state } = fakeSession()
+    state.completionUnread.add('auto')
+
+    await new SessionUnreadController(session, storage, fakeRemote().remote).sync()
+    expect(state.completionUnread.has('auto')).toBe(true)
+  })
+
+  test('marking pushes to the host', async () => {
+    const storage = fakeStorage()
+    const { session } = fakeSession()
+    const host = fakeRemote()
+    new SessionUnreadController(session, storage, host.remote).mark('s1')
+    await settle()
+    expect(host.calls.mark).toContain('s1')
+    expect(host.get().map(item => item.sessionId)).toEqual(['s1'])
+  })
+
+  test('the host is cleared when the session runs or is opened', async () => {
+    const storage = fakeStorage()
+    storage.setItem(UNREAD_SYNCED_KEY, '1')
+    markStored('ran', storage)
+    const { session, statuses, emit } = fakeSession({ current: 'elsewhere', statuses: new Map([['ran', { running: false }]]) })
+    const host = fakeRemote([{ sessionId: 'ran', markedAt: 1 }])
+    const controller = new SessionUnreadController(session, storage, host.remote)
+    const dispose = controller.watch()
+
+    statuses.set('ran', { running: true })
+    emit()
+    await settle()
+    expect(host.get()).toEqual([])
+    dispose()
+  })
+
+  test('the first sync migrates local-only marks and then the host wins', async () => {
+    const storage = fakeStorage()
+    markStored('legacy', storage)
+    const { session } = fakeSession()
+    const host = fakeRemote()
+    const controller = new SessionUnreadController(session, storage, host.remote)
+
+    await controller.sync()
+    expect(host.get().map(item => item.sessionId)).toContain('legacy')
+    expect(storage.getItem(UNREAD_SYNCED_KEY)).toBe('1')
+
+    // Once migrated, a clear elsewhere is not resurrected by this browser.
+    host.set([])
+    await controller.sync()
+    expect(isStoredUnread('legacy', storage)).toBe(false)
+  })
+
+  test('a failed push keeps the mark and retries on the next sync', async () => {
+    const storage = fakeStorage()
+    const { session } = fakeSession()
+    let online = false
+    const items: UnreadRecord[] = []
+    const remote: UnreadRemote = {
+      list: async () => items,
+      mark: async (sessionId) => {
+        if (!online) return undefined
+        items.unshift({ sessionId, markedAt: Date.now() })
+        return items
+      },
+      clear: async () => items,
+    }
+    const controller = new SessionUnreadController(session, storage, remote)
+    controller.mark('offline')
+    await settle()
+    expect(isStoredUnread('offline', storage)).toBe(true)
+    expect(items).toEqual([])
+
+    online = true
+    await controller.sync()
+    expect(items.map(item => item.sessionId)).toContain('offline')
+    expect(isStoredUnread('offline', storage)).toBe(true)
   })
 })
 

@@ -7,9 +7,15 @@
  * once the session runs again or is opened — the same lifecycle DSH applies to
  * the dot itself, so storage and screen never disagree.
  *
+ * Storage is two-layer. The Host (`/totem/unread`) is authoritative so a mark
+ * made on one device appears on the others; `localStorage` is the instant mirror
+ * that survives reloads, offline starts, and a Host that is briefly unreachable.
+ * Reconciliation happens on load, on window focus, and on a slow poll.
+ *
  * @module dsh-totem/session-unread
  */
-import { clearStored, markStored, readUnread, type StorageLike } from './unread-store.ts'
+import { clearStored, markStored, readUnread, writeUnread, type StorageLike, type UnreadRecord } from './unread-store.ts'
+import type { UnreadRemote } from './unread-sync.ts'
 
 /** One status entry as published by the `uiSession` service. */
 export interface SessionStatusLike {
@@ -37,13 +43,24 @@ export function currentKey(session: UiSessionLike): string | undefined {
   return snapshot?.key
 }
 
+/** Set once the local mirror has been reconciled with the Host at least once. */
+export const UNREAD_SYNCED_KEY = 'dsh-totem:unread-synced'
+
 /**
  * Restore, persist, and expire unread marks against the live session service.
  */
 export class SessionUnreadController {
+  /** Marks whose Host write has not been acknowledged yet. */
+  private readonly pending = new Set<string>()
+  /** Sessions with an in-flight Host clear, so a poll cannot duplicate it. */
+  private readonly clearing = new Set<string>()
+  /** Serializes sync runs (initial, focus, poll). */
+  private syncing: Promise<void> | undefined
+
   constructor(
     private readonly session: UiSessionLike,
     private readonly storage?: StorageLike,
+    private readonly remote?: UnreadRemote,
   ) {}
 
   /** Whether the session is the one the user is looking at. */
@@ -52,7 +69,7 @@ export class SessionUnreadController {
   }
 
   /**
-   * Mark a session unread: persist it, then light the dot.
+   * Mark a session unread: persist locally, light the dot, then tell the Host.
    *
    * Returns `false` when there is nothing to mark (no id), so the caller can stay
    * silent instead of writing an empty record.
@@ -62,7 +79,23 @@ export class SessionUnreadController {
     markStored(sessionId, this.storage)
     this.session.completionUnread.add(sessionId)
     this.session.publishStatus()
+    if (this.remote === undefined) return true
+    this.pending.add(sessionId)
+    void this.pushMark(sessionId)
     return true
+  }
+
+  /** Write one pending mark; keep it pending when the Host is unreachable. */
+  private async pushMark(sessionId: string): Promise<void> {
+    const remote = this.remote
+    if (remote === undefined) {
+      this.pending.delete(sessionId)
+      return
+    }
+    const items = await remote.mark(sessionId)
+    if (items === undefined) return
+    this.pending.delete(sessionId)
+    this.apply(items)
   }
 
   /**
@@ -89,17 +122,108 @@ export class SessionUnreadController {
   }
 
   /**
-   * Follow the session service and drop marks that DSH would drop.
+   * Reconcile with the Host. Safe to call often: runs are serialized, and a
+   * failure leaves the local mirror untouched.
+   */
+  sync(): Promise<void> {
+    if (this.remote === undefined) return Promise.resolve()
+    this.syncing ??= this.reconcile().finally(() => { this.syncing = undefined })
+    return this.syncing
+  }
+
+  private async reconcile(): Promise<void> {
+    const remote = this.remote
+    if (remote === undefined) return
+    // Retry marks the Host has not acknowledged yet before reading.
+    for (const sessionId of [...this.pending]) await this.pushMark(sessionId)
+    let items = await remote.list()
+    if (items === undefined) return
+
+    // One-time migration: before the Host store existed, marks lived only in
+    // this browser. Push them up on the first successful sync, then let the Host
+    // win forever after, so a clear on another device is not resurrected.
+    if (this.storage?.getItem(UNREAD_SYNCED_KEY) !== '1') {
+      const remoteIds = new Set(items.map(item => item.sessionId))
+      for (const record of readUnread(this.storage)) {
+        if (!remoteIds.has(record.sessionId)) await remote.mark(record.sessionId)
+      }
+      this.storage?.setItem(UNREAD_SYNCED_KEY, '1')
+      items = await remote.list() ?? items
+    }
+
+    this.apply(items)
+  }
+
+  /** Make the live dot set and the local mirror match one authoritative list. */
+  apply(items: readonly UnreadRecord[]): void {
+    const statuses = this.session.sessionStatus.getSnapshot()
+    const current = currentKey(this.session)
+    const dead = new Set<string>()
+    const live: UnreadRecord[] = []
+    let changed = false
+
+    for (const item of items) {
+      const status = statuses.get(item.sessionId)
+      if (status?.running === true || item.sessionId === current) {
+        dead.add(item.sessionId)
+        continue
+      }
+      live.push(item)
+      if (!this.session.completionUnread.has(item.sessionId)) {
+        this.session.completionUnread.add(item.sessionId)
+        changed = true
+      }
+    }
+
+    // A manual mark the Host no longer has was cleared elsewhere. Only ids in
+    // the local mirror are considered: automatic completion dots set by DSH are
+    // not part of the mirror and must be left alone.
+    const remoteIds = new Set(live.map(item => item.sessionId))
+    for (const record of readUnread(this.storage)) {
+      if (remoteIds.has(record.sessionId) || this.pending.has(record.sessionId)) continue
+      clearStored(record.sessionId, this.storage)
+      if (this.session.completionUnread.delete(record.sessionId)) changed = true
+    }
+
+    // Keep unacknowledged marks in the mirror so a reload cannot lose them.
+    for (const sessionId of this.pending) {
+      if (!remoteIds.has(sessionId)) live.push({ sessionId, markedAt: Date.now() })
+    }
+    writeUnread(live, this.storage)
+    if (changed) this.session.publishStatus()
+    if (dead.size > 0) void this.clearRemote([...dead])
+  }
+
+  /** Clear marks on the Host (running or opened here), then re-apply its list. */
+  private async clearRemote(sessionIds: readonly string[]): Promise<void> {
+    const remote = this.remote
+    if (remote === undefined) return
+    const fresh = sessionIds.filter(id => !this.clearing.has(id))
+    if (fresh.length === 0) return
+    for (const id of fresh) this.clearing.add(id)
+    const items = await remote.clear(fresh)
+    for (const id of fresh) this.clearing.delete(id)
+    if (items !== undefined) this.apply(items)
+  }
+
+  /**
+   * Follow the session service and drop marks that DSH would drop, on this
+   * device and on the Host.
    * @returns a disposer for the subscription.
    */
   watch(): () => void {
     return this.session.sessionStatus.subscribe(() => {
       const statuses = this.session.sessionStatus.getSnapshot()
       const current = currentKey(this.session)
+      const drop: string[] = []
       for (const record of readUnread(this.storage)) {
         const resumed = statuses.get(record.sessionId)?.running === true
-        if (resumed || record.sessionId === current) clearStored(record.sessionId, this.storage)
+        if (resumed || record.sessionId === current) {
+          clearStored(record.sessionId, this.storage)
+          drop.push(record.sessionId)
+        }
       }
+      if (drop.length > 0) void this.clearRemote(drop)
     })
   }
 }

@@ -12,6 +12,7 @@ import { sendNotification } from './notify.ts'
 import type { OverviewService } from './overview.ts'
 import type { ConflictInbox } from './conflicts.ts'
 import type { RestartController } from './restart.ts'
+import type { UnreadStore } from './unread.ts'
 
 const BODY_LIMIT = 1_000_000
 
@@ -33,6 +34,7 @@ interface AssistantDeps {
   conflicts: ConflictInbox
   verify: VerifyStore
   verifyLane: VerifyLane
+  unread: UnreadStore
   restart: RestartController
 }
 
@@ -133,6 +135,7 @@ const routes = {
     }
     if (path === '/totem/reminders') return { items: await deps.reminders.list(true) }
     if (path === '/totem/watches') return { items: await deps.watches.list(true) }
+    if (path === '/totem/unread') return { items: await deps.unread.list() }
     if (path === '/totem/overview') {
       await deps.overview.ensure()
       const source = url.searchParams.get('source') ?? 'all'
@@ -158,6 +161,14 @@ const routes = {
       }
     }
     if (path === '/totem/overview/import') { return deps.overview.importHistory() }
+    if (path === '/totem/unread') {
+      const sessionId = bodyValue.sessionId
+      return { items: await deps.unread.mark(sessionId) }
+    }
+    if (path === '/totem/unread/clear') {
+      const sessionIds = Array.isArray(bodyValue.sessionIds) ? bodyValue.sessionIds : []
+      return { items: await deps.unread.clear(sessionIds) }
+    }
     if (path === '/totem/watches') {
       const interval = Number(bodyValue.intervalMinutes ?? 15)
       return deps.watches.add({
