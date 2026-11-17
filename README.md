@@ -422,6 +422,18 @@ Run `bun run skills:install` to link them into `~/.agents/skills`, which every
 session across every project scans; `bun run research:setup` does it too.
 Linking (rather than copying) keeps the global view in sync with the checkout.
 
+External skills are declared in `skills.lock.json` and installed the same way:
+the installer keeps one **shallow, sparse** checkout per repository under
+`~/.local/share/dsh-totem/skills/<name>` and links the skill directory into
+`~/.agents/skills`. Sparse checkout matters — seven repositories sum to roughly
+450 MB of references and assets, of which only the skill paths are
+materialized (143 MB). Adding a skill is one line in the lock file; updates are
+`git pull --ff-only` on the next `bun run skills:install`. Current set:
+`taste-skill` (design-taste-frontend), `hallmark`, `last30days`, `impeccable`,
+`humanizer`, `logo-design`, `diagram-design`. `bun run skills:install --check`
+prints the plan, and `--no-external` limits the run to this package's own
+skills.
+
 ## Conflict inbox
 
 `memory_create` already detects contradictions, but a conflict that only

@@ -24,7 +24,7 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { installPortableSkills } from './install-skills.ts'
+import { installAllSkills } from './install-skills.ts'
 
 /** The release zip Agent Reach documents; the PyPI name belongs to another project. */
 export const AGENT_REACH_ZIP = 'https://github.com/Panniantong/Agent-Reach/releases/latest/download/agent-reach.zip'
@@ -140,14 +140,13 @@ function openMotion(): void {
 
 function skills(): void {
   log('Portable skills')
-  let names: { name: string; dest: string; action: string }[] = []
-  if (check) {
-    console.log('  would link .agents/skills into ~/.agents/skills')
-  } else {
-    names = installPortableSkills()
-  }
-  for (const skill of names) {
+  const installed = installAllSkills({ check })
+  for (const skill of installed.portable) {
     console.log(`  ${skill.action === 'skipped' ? 'left existing' : skill.action}: ${skill.name} -> ${skill.dest}`)
+  }
+  for (const skill of installed.external) {
+    const verb = skill.action === 'skipped' ? 'left existing' : skill.action
+    console.log(`  ${verb}: ${skill.name}${skill.detail === undefined ? '' : ` (${skill.detail})`}`)
   }
   const guidance = join(root, '.agents', 'skills', 'modern-web-guidance', 'SKILL.md')
   console.log(existsSync(guidance)

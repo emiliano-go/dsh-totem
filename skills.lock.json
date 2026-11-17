@@ -1,0 +1,9 @@
+[
+  { "name": "taste-skill", "repo": "leonxlnx/taste-skill", "path": "skills/taste-skill" },
+  { "name": "hallmark", "repo": "nutlope/hallmark", "path": "skills/hallmark" },
+  { "name": "last30days", "repo": "mvanhorn/last30days-skill", "path": "skills/last30days" },
+  { "name": "impeccable", "repo": "pbakaus/impeccable", "path": ".dsh/skills/impeccable" },
+  { "name": "humanizer", "repo": "blader/humanizer", "path": "." },
+  { "name": "logo-design", "repo": "kaankiziltug/logo-design-skill", "path": "skills/logo-design" },
+  { "name": "diagram-design", "repo": "cathrynlavery/diagram-design", "path": "skills/diagram-design" }
+]
