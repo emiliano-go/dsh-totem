@@ -33,8 +33,6 @@ function mount() {
   // spawning the real server inside a unit test.
   const config = Config({
     command: 'dsh-totem-missing-binary-for-tests',
-    layaEnabled: false,
-    layaManageServer: false,
   })
   apply(ctx, config)
   return { ctx, tools, commands, providers, home }
@@ -70,7 +68,7 @@ describe('plugin composition', () => {
     bare.provide('llm', {})
     bare.provide('workingDirectory', { ensure: async () => home })
     bare.provide('agents', { get: () => undefined })
-    apply(bare, Config({ command: 'dsh-totem-missing-binary-for-tests', layaEnabled: false, layaManageServer: false }))
+    apply(bare, Config({ command: 'dsh-totem-missing-binary-for-tests' }))
     expect(tools.map(tool => tool.name)).toContain('memory_search')
     await bare.fiber.dispose()
   })

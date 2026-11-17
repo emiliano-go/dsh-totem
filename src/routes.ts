@@ -7,10 +7,8 @@ import type { CandidateService } from './candidates.ts'
 import type { ReminderService } from './reminders.ts'
 import type { WatchService } from './watches.ts'
 import { sendNotification } from './notify.ts'
-import type { LayaEngine } from './laya.ts'
 import type { OverviewService } from './overview.ts'
 import type { ConflictInbox } from './conflicts.ts'
-import { slimCall } from './laya.ts'
 
 const BODY_LIMIT = 1_000_000
 
@@ -28,7 +26,6 @@ interface AssistantDeps {
   reminders: ReminderService
   watches: WatchService
   candidates: CandidateService
-  laya: LayaEngine
   overview: OverviewService
   conflicts: ConflictInbox
 }
@@ -109,47 +106,11 @@ const routes = {
     }
     if (path === '/totem/reminders') return { items: await deps.reminders.list(true) }
     if (path === '/totem/watches') return { items: await deps.watches.list(true) }
-    if (path === '/totem/laya/status') return deps.laya.status()
-    if (path === '/totem/laya/last-diff') return { diff: deps.laya.lastLocalizeInput() }
     if (path === '/totem/overview') {
       await deps.overview.ensure()
       const source = url.searchParams.get('source') ?? 'all'
       const filter = source === 'dsh' || source === 'opencode' || source === 'encoder' ? source : 'all'
       return deps.overview.snapshot(filter)
-    }
-    if (path === '/totem/laya/calls') {
-      // One full record for the expanded row's request/response view.
-      const idParam = url.searchParams.get('id')
-      if (idParam !== null) {
-        const id = Number(idParam)
-        const call = deps.laya.recentCalls({ limit: 300 }).find(record => record.id === id)
-        return { call: call ?? null }
-      }
-      const since = Number(url.searchParams.get('since') ?? '')
-      const limit = Number(url.searchParams.get('limit') ?? '')
-      const message = url.searchParams.get('message') ?? ''
-      const turnParam = url.searchParams.get('turn')
-      const turn = turnParam === null ? undefined : Number(turnParam)
-      // The in-chat card is addressed by turn; turn numbers restart per
-      // session, so pin the newest session that recorded this turn.
-      const session = turn !== undefined && Number.isFinite(turn)
-        ? deps.laya.sessionForTurn(turn)
-        : undefined
-      const calls = deps.laya.recentCalls({
-        ...Number.isFinite(since) && since >= 0 ? { since } : {},
-        ...Number.isFinite(limit) && limit > 0 ? { limit } : {},
-        ...message.length > 0 ? { messageId: message } : {},
-        ...turn === undefined || !Number.isFinite(turn) ? {} : { turn },
-        ...session === undefined ? {} : { session },
-      })
-      // Lists are slim by default: the request state is the bulk of a record and
-      // only the expanded row asks for it.
-      const full = url.searchParams.get('full') === '1'
-      return { calls: full ? calls : calls.map(slimCall) }
-    }
-    if (path === '/totem/decisions') {
-      const message = url.searchParams.get('message') ?? ''
-      return { decision: message.length > 0 ? deps.laya.decisionFor(message) ?? null : null }
     }
     throw Object.assign(new Error('not found'), { status: 404 })
   },
@@ -159,19 +120,6 @@ const routes = {
     deps: AssistantDeps,
   ): Promise<unknown> {
     if (path === '/totem/overview/import') { return deps.overview.importHistory() }
-    if (path === '/totem/laya/enable') { await deps.laya.enable(); return deps.laya.status() }
-    if (path === '/totem/laya/disable') { await deps.laya.disable(); return deps.laya.status() }
-    if (path === '/totem/laya/localize') {
-      const task = typeof bodyValue.task === 'string' ? bodyValue.task.trim() : ''
-      const diff = typeof bodyValue.diff === 'string' ? bodyValue.diff : ''
-      const changes = Array.isArray(bodyValue.changes) ? bodyValue.changes : []
-      if (task.length === 0 || (diff.trim().length === 0 && changes.length === 0)) {
-        throw Object.assign(new Error('task and diff or changes are required'), { status: 400 })
-      }
-      const result = await deps.laya.localize({ task, diff, changes: changes as never })
-      if (result === undefined) throw Object.assign(new Error('laya server is unavailable'), { status: 409 })
-      return result
-    }
     if (path === '/totem/watches') {
       const interval = Number(bodyValue.intervalMinutes ?? 15)
       return deps.watches.add({

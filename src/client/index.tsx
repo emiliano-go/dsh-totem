@@ -13,13 +13,6 @@ import { TotemMemoryCard } from './TotemMemoryCard.tsx'
 import { TotemMemoryCardController } from './controller.ts'
 import { AssistantSection } from './AssistantSection.tsx'
 import { AssistantController } from './assistant-controller.ts'
-import { LayaSwitch } from './LayaSwitch.tsx'
-import { LayaSwitchController } from './laya-switch.ts'
-import { DecisionBadge } from './DecisionBadge.tsx'
-import { DecisionBadgeController } from './decision-badge.ts'
-import { LayaTurnCard } from './LayaTurnCard.tsx'
-import { LayaToolView } from './LayaToolView.tsx'
-import { LayaCallsController } from './laya-calls.ts'
 import { SessionUnreadAction, installSessionUnreadStyles } from './SessionUnreadAction.tsx'
 import { SessionUnreadController, type UiSessionLike } from './session-unread.ts'
 import { OverviewPage } from './OverviewPage.tsx'
@@ -52,41 +45,6 @@ export function apply(ctx: ClientContext): void {
     () => ctx.on('connection/reset', () => { card.refreshCatalog() }),
     'dsh-totem: connection resets',
   )
-  const layaSwitch = new LayaSwitchController(ctx.configForms.get('totem'), ctx)
-  ctx.effect(() => () => { layaSwitch.dispose() }, 'dsh-totem: laya switch lifetime')
-  ctx.effect(() => ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
-    name: 'conversation.input.left',
-    id: 'laya',
-    order: 10,
-    inject: () => layaSwitch.inject(),
-  }, LayaSwitch)), 'dsh-totem: laya switch')
-
-  const decisionBadge = new DecisionBadgeController(ctx.configForms.get('totem'))
-  ctx.effect(() => ctx.slots.inject('conversation.chat.assistant-actions', () => ctx.slots.register({
-    name: 'conversation.chat.assistant-actions',
-    id: 'laya-decision',
-    order: 20,
-    inject: () => ({ lookup: decisionBadge.lookup }),
-  }, DecisionBadge)), 'dsh-totem: decision badge')
-
-  // The judge card belongs in the turn tail: a full-width block before the
-  // action row. The action row is a 28px icon strip that fades on hover, which
-  // is the wrong geometry for a card and hid it most of the time.
-  const layaCalls = new LayaCallsController(ctx.configForms.get('totem'))
-  ctx.effect(() => ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
-    name: 'conversation.chat.turnTail',
-    id: 'laya-turn',
-    order: 10,
-    inject: () => ({ lookupTurn: layaCalls.lookupTurn, lookupDetail: layaCalls.lookupDetail }),
-  }, LayaTurnCard)), 'dsh-totem: laya turn card')
-
-  // `decision_ask` renders as a verdict card instead of a generic tool row: the
-  // keyed tool view replaces the row, so the call itself shows what Laya said.
-  ctx.effect(() => ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
-    name: 'tool.call.toolview',
-    key: 'decision_ask',
-  }, LayaToolView)), 'dsh-totem: laya tool view')
-
   const overview = new OverviewController(ctx.configForms.get('totem'))
   // The green "done" dot is browser state (`uiSession.completionUnread`) with no
   // built-in way back. This row action restores it, beside archive and pin, and

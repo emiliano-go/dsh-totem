@@ -78,22 +78,6 @@ export interface AssistantConfig {
   ntfyToken?: string
   telegramBotToken?: string
   telegramChatId?: string
-  layaPassThreshold?: number
-  layaReviewBand?: number
-  layaVetoThreshold?: number
-  layaConfidenceFloor?: number
-  layaCalibrationFile?: string
-  layaMaxRetries?: number
-  layaTimeoutMs?: number
-  layaStepChecks?: string
-  layaStepCadence?: string
-  layaStepMaxFeedback?: number
-  layaVerifyCommand?: string
-  layaVerifyExternal?: string
-  layaVerifyDisable?: string[]
-  layaModel?: string
-  layaDevice?: string
-  layaQuestionsFile?: string
 }
 
 export type AssistantTab =
@@ -103,29 +87,6 @@ export type AssistantTab =
   | 'reminders'
   | 'watches'
   | 'notifications'
-  | 'laya'
-
-/** One ranked hunk from the manual localization route. */
-export interface LayaHunk {
-  index: number
-  header: string
-  added: string[]
-  score: number
-}
-
-/** Result of ranking a diff with Laya. */
-export interface LayaLocalizeResult {
-  top: number | null
-  hunks: LayaHunk[]
-  ms: number
-}
-
-/** Latest recorded turn changes, for the "use last turn diff" action. */
-export interface LayaLastDiff {
-  task: string
-  diff: string
-  changes: unknown[]
-}
 
 /** Snapshot rendered by the section. */
 export interface AssistantState {
@@ -163,10 +124,7 @@ export interface AssistantFace {
   cancelWatch: (id: string) => void
   addWatch: (draft: { kind: string; url: string; condition: string; interval: string }) => void
   saveConfig: (values: AssistantConfig) => void
-  saveLaya: (values: AssistantConfig) => void
   testNotification: () => void
-  localize: (task: string, diff: string) => Promise<LayaLocalizeResult>
-  lastDiff: () => Promise<LayaLastDiff | null>
 }
 
 function asArray(value: unknown): unknown[] {
@@ -232,7 +190,6 @@ export class AssistantController {
       cancelWatch: id => { void this.action(`/watches/${encodeURIComponent(id)}/cancel`, 'Watch stopped.') },
       addWatch: draft => { void this.addWatch(draft) },
       saveConfig: values => { void this.saveConfig(values) },
-      saveLaya: values => { void this.saveLaya(values) },
       testNotification: () => { void this.testNotification() },
       localize: (task, diff) => this.localize(task, diff),
       lastDiff: () => this.lastDiff(),
@@ -373,20 +330,6 @@ export class AssistantController {
     }
   }
 
-  /** Rank diff hunks manually; this never records a decision or steers. */
-  private localize(task: string, diff: string): Promise<LayaLocalizeResult> {
-    return this.request('/laya/localize', {
-      method: 'POST',
-      body: JSON.stringify({ task, diff }),
-    })
-  }
-
-  /** Latest recorded turn changes, or null when no call has changes. */
-  private async lastDiff(): Promise<LayaLastDiff | null> {
-    const data = await this.request<{ diff: LayaLastDiff | null }>('/laya/last-diff')
-    return data.diff
-  }
-
   private async addWatch(draft: { kind: string; url: string; condition: string; interval: string }): Promise<void> {
     const interval = Number(draft.interval)
     this.writing = true
@@ -428,27 +371,6 @@ export class AssistantController {
     this.writing = false
     this.notice = ok ? 'Notification settings saved.' : null
     this.error = ok ? null : 'The Host did not accept the notification settings.'
-    this.publish()
-  }
-
-  private async saveLaya(values: AssistantConfig): Promise<void> {
-    const snapshot = this.form.getSnapshot()
-    const fields: (keyof AssistantConfig)[] = [
-      'layaPassThreshold', 'layaReviewBand', 'layaVetoThreshold', 'layaConfidenceFloor', 'layaCalibrationFile',
-      'layaMaxRetries', 'layaTimeoutMs', 'layaStepChecks', 'layaStepCadence',
-      'layaStepMaxFeedback', 'layaVerifyCommand', 'layaVerifyExternal', 'layaVerifyDisable',
-      'layaModel', 'layaDevice', 'layaQuestionsFile',
-    ]
-    this.writing = true
-    this.publish()
-    const ok = await this.form.mutate(fields.map(field => ({
-      op: 'set' as const,
-      path: [field],
-      value: values[field] as never,
-    })), snapshot.revision)
-    this.writing = false
-    this.notice = ok ? 'Laya settings saved.' : null
-    this.error = ok ? null : 'The Host did not accept the Laya settings.'
     this.publish()
   }
 

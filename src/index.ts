@@ -22,7 +22,6 @@ import { WatchService, registerWatchTools } from './watches.ts'
 import { registerAssistantRoutes } from './routes.ts'
 import { registerNotifyTool } from './notify.ts'
 import { registerCiTools } from './ci.ts'
-import { LayaEngine, registerLayaTool } from './laya.ts'
 import { OverviewService } from './overview.ts'
 import { statePath } from './store.ts'
 import { MEMORY_PROMPT } from './prompt.ts'
@@ -36,7 +35,6 @@ import { budgetFor, clipToTokens } from './budget.ts'
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     'totem-memory': { kind: 'totem-memory' } & ContextFormed
-    'laya-feedback': { kind: 'laya-feedback' } & ContextFormed
   }
 }
 
@@ -116,46 +114,6 @@ export interface Config {
   triageWindowDays: number
   /** Maximum alerts queued per `/triage` run; `0` queues every untriaged alert. */
   triageBatch: number
-  /** Initial laya switch state when no saved state exists. */
-  layaEnabled: boolean
-  /** Laya HTTP base URL. */
-  layaBaseUrl: string
-  /** Command that starts the laya server. */
-  layaServerCommand: string
-  /** Whether this plugin owns the laya server process. */
-  layaManageServer: boolean
-  /** Managed laya device: auto (GPU first), cuda, mps, or cpu. */
-  layaDevice: 'auto' | 'cuda' | 'mps' | 'cpu'
-  /** Laya pass threshold. */
-  layaPassThreshold: Volatile<number>
-  /** Band around the threshold that resolves to needs_review. */
-  layaReviewBand: Volatile<number>
-  /** Per-question normalized value below which the turn is vetoed. */
-  layaVetoThreshold: Volatile<number>
-  /** Confidence below which an answer resolves to needs_review. */
-  layaConfidenceFloor: Volatile<number>
-  /** Optional calibration artifact path. */
-  layaCalibrationFile: Volatile<string>
-  /** Feedback retries per turn. */
-  layaMaxRetries: Volatile<number>
-  /** Laya request timeout in milliseconds. */
-  layaTimeoutMs: Volatile<number>
-  /** Optional question-set override path. */
-  layaQuestionsFile: Volatile<string>
-  /** Display name of the loaded laya model. */
-  layaModel: Volatile<string>
-  /** Step-level checks: off, deterministic veto only, or full judge. */
-  layaStepChecks: Volatile<'off' | 'veto' | 'full'>
-  /** Step check cadence. */
-  layaStepCadence: Volatile<'turn' | 'tool' | 'both'>
-  /** Corrective feedback budget per turn. */
-  layaStepMaxFeedback: Volatile<number>
-  /** Optional project verify command run once per turn. */
-  layaVerifyCommand: Volatile<string>
-  /** External scanners: auto, on, or off. */
-  layaVerifyExternal: Volatile<'auto' | 'on' | 'off'>
-  /** Deterministic rules to disable. */
-  layaVerifyDisable: Volatile<string[]>
 }
 
 /** Loader schema; every field is live so the Plugins page can edit it. */
@@ -196,28 +154,6 @@ export const Config: z<Config> = z.object({
   triageFeedUrl: z.string().default(''),
   triageWindowDays: z.number().step(1).min(1).default(7),
   triageBatch: z.number().step(1).min(0).default(20),
-  layaEnabled: z.boolean().default(false),
-  layaBaseUrl: z.string().default('http://127.0.0.1:8765'),
-  layaServerCommand: z.string().default('/home/eclipse/Documents/laya-ft/.venv/bin/python /home/eclipse/Documents/GitHub/safebox/encoder/script/laya-server.py --model /data/laya-ft/out-m5mem4-head --port 8765'),
-  layaManageServer: z.boolean().default(true),
-  layaDevice: z.union(['auto', 'cuda', 'mps', 'cpu']).default('auto'),
-  layaPassThreshold: z.number().default(0.65).volatile(),
-  layaReviewBand: z.number().min(0).default(0.05).volatile(),
-  layaVetoThreshold: z.number().min(0).max(1).default(0.5).volatile(),
-  layaConfidenceFloor: z.number().min(0).max(1).default(0).volatile(),
-  /** Steer the agent on a review-only outcome instead of treating it as advisory. */
-  layaSteerOnReview: z.boolean().default(false).volatile(),
-  layaCalibrationFile: z.string().default('').volatile(),
-  layaMaxRetries: z.number().step(1).min(0).default(1).volatile(),
-  layaTimeoutMs: z.number().step(1).min(1000).default(60000).volatile(),
-  layaQuestionsFile: z.string().default('').volatile(),
-  layaModel: z.string().default('/data/laya-ft/out-m5mem4-head').volatile(),
-  layaStepChecks: z.union(['off', 'veto', 'full']).default('veto').volatile(),
-  layaStepCadence: z.union(['turn', 'tool', 'both']).default('turn').volatile(),
-  layaStepMaxFeedback: z.number().step(1).min(0).default(2).volatile(),
-  layaVerifyCommand: z.string().default('').volatile(),
-  layaVerifyExternal: z.union(['auto', 'on', 'off']).default('off').volatile(),
-  layaVerifyDisable: z.array(String).default([]).volatile(),
 })
 
 export function resolveConfig(config: Config): TotemConfig {
@@ -312,7 +248,7 @@ export function lastUserTask(messages: readonly unknown[]): string {
     if (typeof message !== 'object' || message === null) continue
     const record = message as { role?: unknown; content?: unknown; source?: { kind?: unknown } }
     if (record.role !== 'user') continue
-    if (record.source?.kind === 'totem-memory' || record.source?.kind === 'laya-feedback') continue
+    if (record.source?.kind === 'totem-memory') continue
     if (!Array.isArray(record.content)) continue
     const text = record.content.flatMap((block) => {
       if (typeof block !== 'object' || block === null) return []
@@ -355,38 +291,6 @@ export function apply(ctx: Context, config: Config): void {
   })
   registerWorkflowSkills(ctx, totem)
   const compaction = new CompactionMemory(totem)
-  const live = <T>(value: T): Volatile<T> => ({ get: () => value }) as unknown as Volatile<T>
-  const laya = new LayaEngine(ctx, totem, {
-    enabled: live(config.layaEnabled),
-    baseUrl: live(config.layaBaseUrl),
-    serverCommand: live(config.layaServerCommand),
-    manageServer: live(config.layaManageServer),
-    device: live(config.layaDevice),
-    passThreshold: config.layaPassThreshold,
-    reviewBand: config.layaReviewBand,
-    vetoThreshold: config.layaVetoThreshold,
-    confidenceFloor: config.layaConfidenceFloor,
-    steerOnReview: live(config.layaSteerOnReview),
-    calibrationFile: config.layaCalibrationFile,
-    maxRetries: config.layaMaxRetries,
-    timeoutMs: config.layaTimeoutMs,
-    questionsFile: config.layaQuestionsFile,
-    model: config.layaModel,
-    stepChecks: config.layaStepChecks,
-    stepCadence: config.layaStepCadence,
-    stepMaxFeedback: config.layaStepMaxFeedback,
-    verifyCommand: config.layaVerifyCommand,
-    verifyExternal: config.layaVerifyExternal,
-    verifyDisable: config.layaVerifyDisable,
-  }, statePath('laya.json'))
-  // The advisory tool has no `session:turn` key, so it borrows the turn the
-  // session's buffer is on to stay visible in the in-chat card.
-  registerLayaTool(ctx, laya, (agent) => {
-    const session = (agent as { session?: object } | undefined)?.session
-    return session === undefined ? undefined : buffers.get(session)?.turn
-  })
-  void laya.initialize()
-  ctx.effect(() => () => { void laya.dispose() }, 'dsh-totem: laya server')
   ctx.effect(() => () => { void totem.dispose() }, 'dsh-totem: totem client')
 
   const candidates = new CandidateService(ctx, totem)
@@ -396,29 +300,26 @@ export function apply(ctx: Context, config: Config): void {
   registerWatchTools(ctx, watches)
   const overview = new OverviewService(statePath('usage.jsonl'))
   void overview.ensure()
-  registerAssistantRoutes(ctx, { totem, reminders, watches, candidates, laya, overview, conflicts })
+  registerAssistantRoutes(ctx, { totem, reminders, watches, candidates, overview, conflicts })
   ctx.effect(() => { reminders.start(); return () => { reminders.stop() } }, 'dsh-totem: reminders')
   ctx.effect(() => { watches.start(); return () => { watches.stop() } }, 'dsh-totem: watches')
 
-  // Buffer each turn for candidate distillation and the Laya judge.
+  // Buffer each turn for candidate distillation and durable session summaries.
   interface TurnBuffer {
     turn: number
-    lastChecked: number
     task: string
     texts: string[]
     tools: string[]
-    toolCalls: { name: string; arguments: string }[]
     calls: Map<string, { name: string; arguments: string }>
     changes: { tool: string; path: string; input: string; output: string; diff?: string }[]
     checks: { command: string; cwd?: string; exitCode: number; output: string }[]
-    grounding: { tool: string; input?: string; output: string }[]
     messageId?: string
   }
   const buffers = new WeakMap<object, TurnBuffer>()
   const bufferFor = (session: object): TurnBuffer => {
     let buffer = buffers.get(session)
     if (buffer === undefined) {
-      buffer = { turn: 0, lastChecked: 0, task: '', texts: [], tools: [], toolCalls: [], calls: new Map(), changes: [], checks: [], grounding: [] }
+      buffer = { turn: 0, task: '', texts: [], tools: [], calls: new Map(), changes: [], checks: [] }
       buffers.set(session, buffer)
     }
     return buffer
@@ -428,14 +329,6 @@ export function apply(ctx: Context, config: Config): void {
     const record = block as { type?: unknown; text?: unknown }
     return record.type === 'text' && typeof record.text === 'string' ? [record.text] : []
   }).join('\n')
-  const snapshotOf = (buffer: TurnBuffer) => ({
-    task: buffer.task,
-    answer: buffer.texts.join('\n\n'),
-    toolCalls: buffer.toolCalls,
-    changes: buffer.changes,
-    grounding: buffer.grounding,
-    ...buffer.messageId === undefined ? {} : { messageId: buffer.messageId },
-  })
   const MUTATING = new Set(['write', 'edit', 'apply_patch'])
 
   ctx.on('session/event', (session, event) => {
@@ -470,11 +363,9 @@ export function apply(ctx: Context, config: Config): void {
         buffer.task = textOf(Array.isArray(message.content) ? message.content : [])
         buffer.texts = []
         buffer.tools = []
-        buffer.toolCalls = []
         buffer.calls.clear()
         buffer.changes = []
         buffer.checks = []
-        buffer.grounding = []
       }
     } else if (event.type === 'assistant/message') {
       const message = (event.data as { message?: { id?: string; content?: unknown[] } }).message
@@ -489,7 +380,6 @@ export function apply(ctx: Context, config: Config): void {
         if (record.type === 'tool-call' && typeof record.name === 'string' && typeof record.id === 'string') {
           const call = { name: record.name, arguments: typeof record.arguments === 'string' ? record.arguments : '' }
           buffer.tools.push(call.name)
-          buffer.toolCalls.push(call)
           buffer.calls.set(record.id, call)
         }
       }
@@ -500,7 +390,6 @@ export function apply(ctx: Context, config: Config): void {
         const call = { name: data.name, arguments: typeof data.arguments === 'string' ? data.arguments : '' }
         buffer.tools.push(call.name)
         buffer.calls.set(data.callId, call)
-        buffer.toolCalls.push(call)
       }
     } else if (event.type === 'tool/result') {
       const data = event.data as { toolCallId?: unknown; message?: { content?: unknown[] }; meta?: unknown }
@@ -525,7 +414,6 @@ export function apply(ctx: Context, config: Config): void {
           ...meta?.diffs === undefined ? {} : { diff: JSON.stringify(meta.diffs) },
         })
       } else if (['read', 'grep', 'glob', 'bash'].includes(call.name)) {
-        buffer.grounding.push({ tool: call.name, input: call.arguments, output })
         if (call.name === 'bash') {
           const meta = data.meta as { exitCode?: unknown; cwd?: unknown } | undefined
           if (typeof meta?.exitCode === 'number') {
@@ -551,8 +439,6 @@ export function apply(ctx: Context, config: Config): void {
       const header = (session as { header?: { cwd?: string } }).header
       const id = (session as { id?: string }).id
       const turn = (event.data as { turn?: number }).turn
-      if (id !== undefined && turn !== undefined) laya.clearTurn(id, turn)
-      else if (id !== undefined) laya.clearTurn(id, buffer.turn)
       void candidates.distillTurn({
         project: header?.cwd ?? '',
         sessionId: id ?? '',
@@ -569,19 +455,6 @@ export function apply(ctx: Context, config: Config): void {
         checks: buffer.checks,
       })
     }
-  })
-
-  ctx.on('agent/turn-stopping', async ({ agent, turn, signal }) => {
-    const session = (agent as { session?: object }).session
-    if (session === undefined) return
-    const buffer = buffers.get(session)
-    if (buffer === undefined) return
-    await laya.onTurnStopping({
-      agent: agent as never,
-      turn,
-      signal,
-      snapshot: snapshotOf(buffer),
-    })
   })
 
   // Context pressure, when a token meter is mounted, shrinks the injected
@@ -672,33 +545,6 @@ export function apply(ctx: Context, config: Config): void {
       return { ...decision, messages: [...decision.messages, message] }
     } catch {
       return decision
-    }
-  })
-
-  ctx.on('agent/pre-step', async (request, next) => {
-    const decision = await next()
-    if (config.layaStepChecks === 'off' || request.step <= 1) return decision
-    const session = (request.agent as { session?: { id?: string; header?: { cwd?: string } } }).session
-    if (session === undefined) return decision
-    const buffer = buffers.get(session)
-    if (buffer === undefined) return decision
-    const cadence = config.layaStepCadence
-    if ((cadence === 'tool' || cadence === 'both') && buffer.changes.length === buffer.lastChecked) return decision
-    buffer.lastChecked = buffer.changes.length
-    const text = await laya.checkStep({
-      snapshot: snapshotOf(buffer),
-      agent: request.agent,
-      signal: request.signal,
-      key: `${session.id ?? ''}:${buffer.turn}`,
-      project: session.header?.cwd,
-    })
-    if (text === undefined) return decision
-    return {
-      ...decision,
-      messages: [...decision.messages, createUserMessage({
-        content: [{ type: 'text', text }],
-        source: { kind: 'laya-feedback' },
-      })],
     }
   })
 

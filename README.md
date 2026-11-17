@@ -222,8 +222,9 @@ Host, no model, no GPU — which is also how the rules are tested.
 - `bun run script/evidence.ts --command "bun test" --repeat 3` records exit
   code, duration, output hash, and a tail; repeating it reports whether a
   failure is stable or flaky.
-- `bun run script/replay-verify.ts` replays the persisted judge calls through
-  both lanes and reports which verdicts a deterministic veto would have changed.
+- `bun run script/replay-verify.ts` replays a persisted call log (from before
+  the model judge was removed) through both lanes and reports which verdicts a
+  deterministic veto would have changed.
 - `bun run script/coverage.ts --repo . --coverage coverage/lcov.info` maps the
   added lines of the diff onto an existing coverage report (Istanbul JSON, LCOV,
   or Cobertura) and fails when a new executable line never ran. It costs no test
@@ -353,93 +354,20 @@ ranker; the auto mode therefore gates only on having cases and on latency, and
 quality gates require `--cases`. Exit codes are `0` pass, `1` gate failure, `2`
 usage or transport error.
 
-## Laya decision engine
+## Model judge removed
 
-The `totem` plugin can run the custom Laya judge locally:
+A local model judge (Laya) used to sit on top of the deterministic lanes as a
+turn gate, step check, advisory `decision_ask`, and manual diff-narrowing
+endpoint. It was **removed on 2026-11-16**: eight evaluation rounds (gate A/B,
+head fine-tunes, memory warm start, repository localization, call-shape and
+checkpoint sweeps, hierarchical narrowing, N-best patch selection) found no
+measurable benefit, and every ranking shape scored at or below a traceback +
+BM25 baseline. The full record, including the two scripts that produced it, is
+in `emiliano-go/laya-coding-decisions` (`docs/CONCLUSIONS.md`).
 
-- **`decision_ask`** — **advisory only**: it scores an agent-supplied snapshot
-  and never counts as the turn gate, never records a decision, and cannot pass a
-  failed turn.
-- **Turn evaluation** at `agent/turn-stopping`: builds the trained state
-  (`task`, Totem memory, changes/diffs, answer, tool calls, grounding), applies
-  the deterministic verify lane, then asks Laya; failing verdicts steer one
-  bounded retry.
-- **Verify lane**: hardcoded secrets, SQL/code injection, destructive commands,
-  assignment-in-condition, silent swallow, test weakening, unsafe advice,
-  execution evidence, optional project verify command and optional external
-  scanners (`layaVerifyExternal`).
-- **Step checks**: `layaStepChecks` (`off`/`veto`/`full`), `layaStepCadence`
-  (`turn`/`tool`/`both`), and a per-turn feedback budget with dedupe. A step
-  verdict is always **advisory**: it steers the model with corrective feedback
-  and appears as a `step` row in the turn card, but it never becomes the turn
-  decision. With `veto` (the default) the step boundary runs only the
-  deterministic verify lane over the recorded diffs, and a call is recorded only
-  when a rule vetoes; set `full` to also ask the judge after each step. Files are
-  read from disk only when external scanners (`layaVerifyExternal`) are on.
-- **Log**: `<project>/.encoder/decision-log.jsonl` (turn and step entries).
-- **Managed server**: the composer **Laya** switch is **off by default**. Turning
-  it on starts the server and preloads the model into VRAM (switch shows
-  `· loading` until ready); turning it off kills the process, frees VRAM, hides
-  `decision_ask`, and skips verify/step/judge. State persists in
-  `~/.dsh/totem/laya.json`. A failed start now rolls the switch back to off and
-  shows the reason instead of leaving an endless `· loading`; the managed
-  server's stdout/stderr is appended to `~/.dsh/totem/laya-server.log`. With
-  `layaManageServer: false`, a healthy server must already be listening at
-  `layaBaseUrl`.
-- **Device**: `layaDevice` selects `auto` (the default), `cuda`, `mps`, or
-  `cpu`. `auto` leaves laya's own resolution, which prefers CUDA, then MPS,
-  then CPU. An explicit device is appended to the managed command unless the
-  command already has a `--device` flag, and laya falls back to CPU when that
-  device is unavailable or the model does not fit in VRAM. If another process
-  already serves `layaBaseUrl`, the plugin uses that server and `layaDevice`
-  cannot change its device; stop it or point the plugin at a free port.
-- **Fail-closed scoring**: every configured question must be answered; a missing
-  answer, low confidence, or a composite inside `layaReviewBand` (default `0.05`)
-  resolves to `needs_review` instead of flipping pass/fail.
-- **Review-only outcomes**: a `needs_review` reached without evidence of a real
-  problem — a marginal veto, a near-threshold composite, or low confidence when
-  the composite is not a clear pass — is recorded with `reviewOnly: true` and
-  does **not** steer the turn; the card labels it `review only` and explains
-  why. A clear pass (`composite >= pass + band`) is never downgraded by low
-  confidence. Set `layaSteerOnReview: true` to enforce review-only outcomes
-  anyway. A floor above the judge's typical confidence (this model usually
-  answers at 0.05–0.4) makes near-threshold turns review-only; it does not make
-  clear passes review-only.
-- **Manual localization**: `POST /totem/laya/localize` with `{task, diff}` (or
-  `{task, changes}`) ranks diff hunks by likelihood of containing the bug and
-  returns `{top, hunks: [{index, header, added, score}], ms}`. It is a manual
-  narrowing probe: it never records a decision and never steers, and it works
-  while the automatic gate is disabled as long as the shared server is healthy.
-  The **Laya → Narrow a diff** panel in the Assistant settings tab exposes it:
-  paste a diff, or click **Use last turn diff** to load the newest recorded
-  turn's changes. With Laya enabled, the `laya_localize` tool exposes the same
-  call to the agent.
-- **Assistant → Laya tab**: pass threshold, review band, veto threshold,
-  confidence floor, retries, step checks/cadence/budget, verify command, external
-  scanners, disabled rules, model path, device, questions file, calibration file.
-- **Chat footer badge**: finalized assistant messages show `· Decision <verdict>
-  <composite>` once the turn's evaluation is recorded.
-- **Judge-call card**: each assistant message with judge calls gets a collapsible
-  card showing the verdict, composite, margin, latency, per-question answers, and
-  the request/response JSON.
-
-```yaml
-- id: totem
-  config:
-    layaEnabled: true
-    layaBaseUrl: http://127.0.0.1:8765
-    layaServerCommand: '/path/to/python /path/to/laya-server.py --model /path/to/checkpoint --port 8765'
-    layaManageServer: true
-    layaDevice: auto
-    layaPassThreshold: 0.65
-    layaMaxRetries: 1
-    layaStepChecks: veto
-    layaStepCadence: turn
-    layaStepMaxFeedback: 2
-    layaVerifyCommand: ''
-    layaVerifyExternal: 'off'
-    layaVerifyDisable: []
-```
+The plugin now ships deterministic paths only: the verify lanes above, the
+evidence recorder, the coverage gate, and memory. No model server, no judge
+config keys, no Laya tab, badge, turn card, or tool.
 
 ## Overview page
 

@@ -3,7 +3,8 @@
  *
  * The point is not to grade the judge in the abstract: it is to find turns the
  * judge let through that a deterministic rule can prove. Run it against the
- * persisted call store (`~/.dsh/totem/laya-calls.jsonl`) after a few real
+ * persisted call store (`~/.dsh/totem/laya-calls.jsonl`) written before the
+ * model judge was removed
  * sessions and it reports exactly which verdicts a veto would have changed.
  *
  * Usage:
