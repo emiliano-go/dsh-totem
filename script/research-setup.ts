@@ -18,6 +18,7 @@ import { existsSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
+import { installPortableSkills } from './install-skills.ts'
 
 const root = join(import.meta.dir, '..')
 const deployDir = join(root, 'deploy', 'searxng')
@@ -131,6 +132,12 @@ async function main(): Promise<void> {
     if (!have('chromium') && !have('google-chrome') && !have('google-chrome-stable')) {
       console.warn('  warning: no system Chrome/Chromium found; run `uvx --from "browser-use[cli]" browser-use install` once if browser-use cannot start a browser')
     }
+  }
+
+  log('Portable skills')
+  for (const skill of installPortableSkills()) {
+    const verb = skill.action === 'skipped' ? 'left existing' : skill.action
+    console.log(`  ${verb}: ${skill.name} -> ${skill.dest}`)
   }
 
   log('Next steps')

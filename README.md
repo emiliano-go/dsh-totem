@@ -329,7 +329,9 @@ bun run research:verify --browsers   # also navigate and drive a browser
 
 `research:setup` starts the bundled SearXNG (`deploy/searxng/compose.yaml`,
 loopback on port 8888, JSON API enabled) and installs the Chromium revision
-that `@playwright/mcp` pins. It is idempotent.
+that `@playwright/mcp` pins. It also links the portable skills into
+`~/.agents/skills` so `deep-research` resolves outside this checkout. It is
+idempotent.
 
 To use a SearXNG hosted elsewhere — for example on `solsticio` — start the
 compose file there and change `SEARXNG_URL` / `MCP_SEARCH_SEARXNG_URL` in
@@ -371,9 +373,12 @@ demand, and an edited workflow appears on the next catalog without an
 invalidation step.
 
 Four portable skills also ship under `.agents/skills/`, which the filesystem
-provider scans automatically: `totem-memory-hygiene`, `totem-session-handoff`,
-`totem-conflict-resolution`, and `deep-research`. Copy that directory to
-`~/.agents/skills` to make them available in every project.
+provider scans as a *project* root: `totem-memory-hygiene`,
+`totem-session-handoff`, `totem-conflict-resolution`, and `deep-research`.
+That makes them visible only in sessions whose cwd is inside this checkout.
+Run `bun run skills:install` to link them into `~/.agents/skills`, which every
+session across every project scans; `bun run research:setup` does it too.
+Linking (rather than copying) keeps the global view in sync with the checkout.
 
 ## Conflict inbox
 
