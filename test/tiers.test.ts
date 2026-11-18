@@ -85,6 +85,18 @@ describe('compaction detection', () => {
   test('recovery is empty when nothing durable exists', () => {
     expect(formatRecovery([{ type: 'implementation', title: 'File: a.ts' }], [], 300)).toBe('')
   })
+
+  test('recovery carries the mechanical working state beside durable claims', () => {
+    const working = '### Working state (mechanical, not summarized)\nGoal: Fix login'
+    const text = formatRecovery([
+      { type: 'decision', title: 'Use SQLite', statement: 'Portable.', importance: 0.9 },
+    ], [], 400, working)
+    expect(text).toContain('Working state')
+    expect(text).toContain('Fix login')
+    expect(text).toContain('Use SQLite')
+    // With no memory at all, the working state is still returned.
+    expect(formatRecovery([], [], 200, working)).toBe(working)
+  })
 })
 
 describe('command parsing', () => {

@@ -28,6 +28,7 @@ import { OverviewService } from './overview.ts'
 import { statePath } from './store.ts'
 import { MEMORY_PROMPT } from './prompt.ts'
 import { CompactionMemory } from './compaction.ts'
+import { SessionLedger } from './ledger.ts'
 import { registerTotemCommands } from './commands.ts'
 import { registerWorkflowSkills } from './skills.ts'
 import { registerRecallTool } from './recall.ts'
@@ -159,7 +160,7 @@ export const Config: z<Config> = z.object({
   distill: z.boolean().default(true),
   digest: z.boolean().default(true),
   digestTokens: z.number().step(1).min(0).default(400),
-  recoveryTokens: z.number().step(1).min(0).default(600),
+  recoveryTokens: z.number().step(1).min(0).default(900),
   maxTokens: z.number().step(1).min(64).default(512),
   maxInputBytes: z.number().step(1).min(1024).default(24000),
   timeoutMs: z.number().step(1).min(1000).default(15000),
@@ -352,7 +353,8 @@ export function apply(ctx: Context, config: Config): void {
     },
   })
   registerWorkflowSkills(ctx, totem)
-  const compaction = new CompactionMemory(totem)
+  const ledger = new SessionLedger()
+  const compaction = new CompactionMemory(totem, ledger)
   ctx.effect(() => () => { void totem.dispose() }, 'dsh-totem: totem client')
 
   const candidates = new CandidateService(ctx, totem)
@@ -427,6 +429,7 @@ export function apply(ctx: Context, config: Config): void {
     // Usage accounting runs for every event; it dedupes by session/seq.
     overview.record((session as { id?: string }).id ?? '', event as { type?: string; seq?: number; time?: number; data?: unknown })
     const eventSessionId = (session as { id?: string }).id ?? ''
+    ledger.note(eventSessionId, event as { type?: unknown; data?: unknown })
     if (compaction.note(eventSessionId, event as { type?: string; data?: unknown })) {
       // The summary is about to be written by the compaction backend, which
       // keeps only what its own summarizer considered important. Persist this
@@ -485,8 +488,13 @@ export function apply(ctx: Context, config: Config): void {
         buffer.calls.set(data.callId, call)
       }
     } else if (event.type === 'tool/result') {
-      const data = event.data as { toolCallId?: unknown; message?: { content?: unknown[] }; meta?: unknown }
-      const call = typeof data.toolCallId === 'string' ? bufferFor(session).calls.get(data.toolCallId) : undefined
+      const data = event.data as {
+        toolCallId?: unknown
+        message?: { content?: unknown[]; toolCallId?: unknown; isError?: unknown }
+        meta?: { diffs?: unknown; path?: unknown; exitCode?: unknown; cwd?: unknown }
+      }
+      const callId = typeof data.message?.toolCallId === 'string' ? data.message.toolCallId : data.toolCallId
+      const call = typeof callId === 'string' ? bufferFor(session).calls.get(callId) : undefined
       if (call === undefined) return
       const buffer = bufferFor(session)
       const output = textOf(Array.isArray(data.message?.content) ? data.message.content : [])
@@ -496,20 +504,22 @@ export function apply(ctx: Context, config: Config): void {
           const args = JSON.parse(call.arguments) as { file_path?: unknown; filePath?: unknown; path?: unknown }
           path = typeof args.file_path === 'string' ? args.file_path
             : typeof args.filePath === 'string' ? args.filePath
-              : typeof args.path === 'string' ? args.path : ''
+              : typeof args.path === 'string' ? args.path
+                : typeof data.meta?.path === 'string' ? data.meta.path : ''
         } catch {}
-        const meta = data.meta as { diffs?: unknown } | undefined
         buffer.changes.push({
           tool: call.name,
           path,
           input: call.arguments,
           output,
-          ...meta?.diffs === undefined ? {} : { diff: JSON.stringify(meta.diffs) },
+          ...data.meta?.diffs === undefined ? {} : { diff: JSON.stringify(data.meta.diffs) },
         })
       } else if (['read', 'grep', 'glob', 'bash'].includes(call.name)) {
         if (call.name === 'bash') {
-          const meta = data.meta as { exitCode?: unknown; cwd?: unknown } | undefined
-          if (typeof meta?.exitCode === 'number') {
+          const exitCode = typeof data.meta?.exitCode === 'number'
+            ? data.meta.exitCode
+            : (data.message?.isError === true ? 1 : 0)
+          if (typeof exitCode === 'number') {
             try {
               const args = JSON.parse(call.arguments) as { command?: unknown; workdir?: unknown }
               const command = typeof args.command === 'string' ? args.command : ''
@@ -517,7 +527,7 @@ export function apply(ctx: Context, config: Config): void {
                 buffer.checks.push({
                   command: command.slice(0, 1000),
                   ...typeof args.workdir === 'string' ? { cwd: args.workdir } : {},
-                  exitCode: meta.exitCode,
+                  exitCode,
                   output,
                 })
               }
@@ -706,6 +716,7 @@ export function apply(ctx: Context, config: Config): void {
     const id = (session as { id?: string }).id ?? ''
     if (id.length === 0) return
     compaction.clear(id)
+    ledger.forget(id)
     totem.clearProject(id)
   })
 }

@@ -21,6 +21,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { bulletBlock, clipToTokens, rankItems, type BudgetItem } from './budget.ts'
 import type { TotemService } from './service.ts'
+import type { SessionLedger } from './ledger.ts'
 
 /** The event fields compaction detection reads. */
 export interface CompactionEventLike {
@@ -53,23 +54,38 @@ const RECOVERY_TYPES = new Set([
 ])
 
 /** Render the post-compaction recovery block. */
-export function formatRecovery(recent: readonly BudgetItem[], tasks: readonly BudgetItem[], maxTokens = 600): string {
+export function formatRecovery(
+  recent: readonly BudgetItem[],
+  tasks: readonly BudgetItem[],
+  maxTokens = 600,
+  workingState = '',
+): string {
   const durable = rankItems(recent.filter((item) => {
     const type = typeof item.type === 'string' ? item.type : ''
     return RECOVERY_TYPES.has(type)
   }))
+  const hasMemory = durable.length > 0 || tasks.length > 0
+  if (!hasMemory && workingState.length === 0) return ''
+  // The mechanical ledger keeps the present task; durable memory keeps the
+  // decisions behind it. Split the budget so neither starves the other.
+  const working = workingState.length === 0
+    ? ''
+    : clipToTokens(workingState, Math.max(120, Math.floor(maxTokens * 0.5)))
+  const memoryBudget = Math.max(0, maxTokens - (working.length === 0 ? 0 : Math.ceil(working.length / 4)))
+  if (!hasMemory) return working
   // Memory tasks share importance semantics with other items, so they are
   // rendered after the durable claims and get whatever budget remains.
-  const lines = bulletBlock(durable, Math.max(0, maxTokens - 120))
+  const lines = bulletBlock(durable, Math.max(0, memoryBudget - 120))
   const suffix = lines.length > 0 ? lines : []
-  const taskLines = bulletBlock(tasks, Math.max(0, maxTokens - 60), 160)
-  if (suffix.length === 0 && taskLines.length === 0) return ''
-  return clipToTokens([
+  const taskLines = bulletBlock(tasks, Math.max(0, memoryBudget - 60), 160)
+  if (suffix.length === 0 && taskLines.length === 0) return working
+  const memory = clipToTokens([
     'Project memory restored after context compaction (Totem).',
     'These are durable claims from earlier work; verify anything stale-prone before relying on it.',
     ...suffix.length === 0 ? [] : ['Durable:', ...suffix],
     ...taskLines.length === 0 ? [] : ['In progress:', ...taskLines],
-  ].join('\n'), maxTokens)
+  ].join('\n'), memoryBudget)
+  return working.length === 0 ? memory : `${working}\n\n${memory}`
 }
 
 /** Session-scoped compaction tracker. */
@@ -79,7 +95,10 @@ export class CompactionMemory {
   /** Compaction markers seen per session, for diagnostics and routes. */
   private readonly counts = new Map<string, number>()
 
-  constructor(private readonly totem: TotemService) {}
+  constructor(
+    private readonly totem: TotemService,
+    private readonly ledger?: SessionLedger,
+  ) {}
 
   /** Record one event; returns true when it was a compaction marker. */
   note(sessionId: string, event: CompactionEventLike): boolean {
@@ -125,6 +144,7 @@ export class CompactionMemory {
         Array.isArray(recent) ? recent as BudgetItem[] : [],
         Array.isArray(tasks) ? tasks as BudgetItem[] : [],
         maxTokens,
+        this.ledger?.render(sessionId, Math.max(0, Math.floor(maxTokens * 0.5))) ?? '',
       )
     } catch {
       return ''
