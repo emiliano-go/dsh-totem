@@ -45,6 +45,8 @@ export interface UnreadMenuDeps {
   statusOf: (sessionId: string) => UnreadStatusLike | undefined
   /** Re-add the session to the completion-unread set. */
   mark: (sessionId: string) => boolean
+  /** Clear the session's unread mark without opening it. */
+  clear: (sessionId: string) => boolean
 }
 
 /** Menu order: after fork (300), before the session-id separator (450). */
@@ -53,9 +55,10 @@ export const UNREAD_MENU_ORDER = 350
 /**
  * Resolve the actions for one captured session target.
  *
- * A running session cannot be unread (it is producing output right now), the
- * open session would have its mark cleared immediately, and one that already
- * carries the dot has nothing to restore — all three return no actions.
+ * The open session would have its mark cleared immediately, so it gets no
+ * action. An already-unread session gets the inverse action — "Mark as read"
+ * dismisses the dot without opening the session — so the `...` menu always
+ * exposes an unread control for every other row.
  */
 export function unreadMenuActions(
   target: { sessionId: string; displayTitle?: string },
@@ -65,8 +68,14 @@ export function unreadMenuActions(
   if (sessionId.length === 0) return []
   if (deps.isCurrent(sessionId)) return []
   const status = deps.statusOf(sessionId)
-  if (status?.running === true) return []
-  if (status?.completionUnread === true) return []
+  if (status?.completionUnread === true) {
+    return [{
+      id: 'totem-read',
+      label: 'Mark as read',
+      icon: { key: 'totem.unread' },
+      run: () => { deps.clear(sessionId) },
+    }]
+  }
   return [{
     id: 'totem-unread',
     label: 'Mark as unread',

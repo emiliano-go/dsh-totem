@@ -217,11 +217,17 @@ test('the session menu restores the green unread dot', () => {
   // The mark is persisted, so a reload can restore it.
   expect(fakeLocalStorage.getItem('dsh-totem:unread-sessions') ?? '').toContain('s1')
 
-  // Nothing to restore while running or already unread.
+  // A running session can still be marked; the dot lands when it finishes.
   statuses.set('s1', { running: true })
-  expect(contribution!.resolve({ sessionId: 's1', displayTitle: 'Session' })).toEqual([])
+  expect(contribution!.resolve({ sessionId: 's1', displayTitle: 'Session' })[0].label).toBe('Mark as unread')
+
+  // Once unread, the menu offers the inverse action instead of hiding.
   statuses.set('s1', { running: false, completionUnread: true })
-  expect(contribution!.resolve({ sessionId: 's1', displayTitle: 'Session' })).toEqual([])
+  const inverse = contribution!.resolve({ sessionId: 's1', displayTitle: 'Session' })
+  expect(inverse[0].label).toBe('Mark as read')
+  inverse[0].run()
+  expect(unread.sessions.has('s1')).toBe(false)
+  expect(fakeLocalStorage.getItem('dsh-totem:unread-sessions') ?? '').not.toContain('s1')
 })
 
 test('a stored unread mark is restored on the next load', () => {

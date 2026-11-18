@@ -263,6 +263,22 @@ describe('cross-device sync', () => {
     dispose()
   })
 
+  test('clearing dismisses the dot locally and on the host', async () => {
+    const storage = fakeStorage()
+    markStored('s1', storage)
+    const { session, state } = fakeSession()
+    state.completionUnread.add('s1')
+    const host = fakeRemote([{ sessionId: 's1', markedAt: Date.now() }])
+    const controller = new SessionUnreadController(session, storage, host.remote)
+
+    expect(controller.clear('s1')).toBe(true)
+    await settle()
+    expect(state.completionUnread.has('s1')).toBe(false)
+    expect(isStoredUnread('s1', storage)).toBe(false)
+    expect(host.get()).toEqual([])
+    expect(controller.clear('')).toBe(false)
+  })
+
   test('a dot already mirrored from the host is not pushed back', async () => {
     const storage = fakeStorage()
     markStored('mirrored', storage)
@@ -306,14 +322,18 @@ describe('unread menu action', () => {
     current?: string
     status?: SessionStatusLike
     marked?: string[]
+    cleared?: string[]
   } = {}) => {
     const marked = options.marked ?? []
+    const cleared = options.cleared ?? []
     return {
       marked,
+      cleared,
       deps: {
         isCurrent: (id: string) => id === options.current,
         statusOf: () => options.status,
         mark: (id: string) => { marked.push(id); return true },
+        clear: (id: string) => { cleared.push(id); return true },
       },
     }
   }
@@ -333,11 +353,21 @@ describe('unread menu action', () => {
     expect(marked).toEqual(['s7'])
   })
 
-  test('declines running, already-unread, and open sessions', () => {
-    expect(unreadMenuActions({ sessionId: 's1', displayTitle: '' },
-      deps({ status: { running: true } }).deps)).toEqual([])
-    expect(unreadMenuActions({ sessionId: 's1', displayTitle: '' },
-      deps({ status: { running: false, completionUnread: true } }).deps)).toEqual([])
+  test('still offers the action while a session is running', () => {
+    const actions = unreadMenuActions({ sessionId: 's1', displayTitle: '' },
+      deps({ status: { running: true } }).deps)
+    expect(actions.map(action => action.label)).toEqual(['Mark as unread'])
+  })
+
+  test('an already-unread session offers the inverse action', () => {
+    const { deps: lookup, cleared } = deps({ status: { running: false, completionUnread: true } })
+    const actions = unreadMenuActions({ sessionId: 's1', displayTitle: '' }, lookup)
+    expect(actions.map(action => action.label)).toEqual(['Mark as read'])
+    actions[0].run()
+    expect(cleared).toEqual(['s1'])
+  })
+
+  test('declines the open session and an empty id', () => {
     expect(unreadMenuActions({ sessionId: 's1', displayTitle: '' },
       deps({ current: 's1', status: { running: false } }).deps)).toEqual([])
     expect(unreadMenuActions({ sessionId: '', displayTitle: '' },

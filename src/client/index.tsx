@@ -119,6 +119,7 @@ export function apply(ctx: ClientContext): void {
           isCurrent: id => controller.isCurrent(id),
           statusOf: id => session.sessionStatus.getSnapshot().get(id),
           mark: id => controller.mark(id),
+          clear: id => controller.clear(id),
         }),
       }), 'dsh-totem: mark unread menu')
     })

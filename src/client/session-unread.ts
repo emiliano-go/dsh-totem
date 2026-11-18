@@ -87,6 +87,22 @@ export class SessionUnreadController {
     return true
   }
 
+  /**
+   * Dismiss a session's unread mark without opening it.
+   *
+   * The mirror and the live dot are cleared first, then the Host is told so the
+   * other devices drop it too.
+   */
+  clear(sessionId: string): boolean {
+    if (sessionId.length === 0) return false
+    clearStored(sessionId, this.storage)
+    this.observedUnread.delete(sessionId)
+    const changed = this.session.completionUnread.delete(sessionId)
+    if (changed) this.session.publishStatus()
+    if (this.remote !== undefined) void this.clearRemote([sessionId])
+    return true
+  }
+
   /** Write one pending mark; keep it pending when the Host is unreachable. */
   private async pushMark(sessionId: string): Promise<void> {
     const remote = this.remote
