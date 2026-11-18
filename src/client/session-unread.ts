@@ -227,6 +227,30 @@ export class SessionUnreadController {
         }
       }
       if (drop.length > 0) void this.clearRemote(drop)
+
+      // DSH raises the completion dot in the client that observed the turn
+      // finish. Mirror that automatic mark to the Host as well, so a phone
+      // that was not connected (or was not that Session's view) still sees it.
+      for (const [sessionId, status] of statuses) {
+        if (status.completionUnread !== true) continue
+        if (status.running === true || sessionId === current) continue
+        this.trackCompletion(sessionId)
+      }
     })
+  }
+
+  /**
+   * Persist one automatic completion dot without lighting a second one.
+   *
+   * Skips ids already in the local mirror (our own Host sync and previous
+   * tracks) and ids with an in-flight push, so the 20s sync and the status
+   * subscription cannot stampede the Host.
+   */
+  private trackCompletion(sessionId: string): void {
+    if (this.remote === undefined || this.pending.has(sessionId)) return
+    if (readUnread(this.storage).some(record => record.sessionId === sessionId)) return
+    markStored(sessionId, this.storage)
+    this.pending.add(sessionId)
+    void this.pushMark(sessionId)
   }
 }

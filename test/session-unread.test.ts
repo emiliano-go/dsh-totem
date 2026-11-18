@@ -244,6 +244,40 @@ describe('cross-device sync', () => {
     expect(items.map(item => item.sessionId)).toContain('offline')
     expect(isStoredUnread('offline', storage)).toBe(true)
   })
+
+  test('an automatic completion dot is mirrored to the host', async () => {
+    const storage = fakeStorage()
+    const { session, statuses, emit, state } = fakeSession({ current: 'elsewhere' })
+    const host = fakeRemote()
+    const controller = new SessionUnreadController(session, storage, host.remote)
+    const dispose = controller.watch()
+
+    // DSH raises the dot in this client when a turn finishes out of view.
+    state.completionUnread.add('finished')
+    statuses.set('finished', { running: false, completionUnread: true })
+    emit()
+    await settle()
+
+    expect(host.calls.mark).toContain('finished')
+    expect(isStoredUnread('finished', storage)).toBe(true)
+    dispose()
+  })
+
+  test('a dot already mirrored from the host is not pushed back', async () => {
+    const storage = fakeStorage()
+    markStored('mirrored', storage)
+    const { session, statuses, emit, state } = fakeSession({ current: 'elsewhere' })
+    const host = fakeRemote([{ sessionId: 'mirrored', markedAt: Date.now() }])
+    const controller = new SessionUnreadController(session, storage, host.remote)
+    const dispose = controller.watch()
+
+    state.completionUnread.add('mirrored')
+    statuses.set('mirrored', { running: false, completionUnread: true })
+    emit()
+    await settle()
+    expect(host.calls.mark).toEqual([])
+    dispose()
+  })
 })
 
 describe('unread menu action', () => {
