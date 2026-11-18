@@ -60,6 +60,10 @@ export interface RestartDeps {
   launcher: () => string
   /** True while at least one turn is running. */
   busy: () => boolean
+  /** systemd user unit that owns the host when it is supervised. */
+  service?: () => string
+  /** True when the host runs under systemd (a unit or a transient scope). */
+  supervised?: () => boolean
   env?: NodeJS.ProcessEnv
   cwd?: () => string
   exists?: (path: string) => boolean
@@ -165,9 +169,16 @@ export class RestartController {
     if (port !== undefined && port > 0) env.DSH_TOTEM_PORT = String(port)
     const cwd = this.deps.cwd?.() ?? process.cwd()
     const run = this.deps.spawn ?? spawn as unknown as SpawnLike
+    const supervised = this.deps.supervised?.() ?? env.INVOCATION_ID !== undefined
+    const service = this.deps.service?.() ?? 'dsh-totem.service'
     this.timer = setTimeout(() => {
       this.timer = undefined
-      const child = run(launcher, [], { detached: true, stdio: 'ignore', cwd, env })
+      // Under systemd a detached launcher would still live in the host's
+      // cgroup, so stopping the unit kills the replacement too. Ask the user
+      // manager for the restart instead; --no-block returns before this exit.
+      const child = supervised
+        ? run('systemctl', ['--user', '--no-block', 'restart', service], { detached: true, stdio: 'ignore', cwd, env })
+        : run(launcher, [], { detached: true, stdio: 'ignore', cwd, env })
       child.unref()
     }, delayMs)
   }

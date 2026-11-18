@@ -75,6 +75,8 @@ export interface TotemConfig {
   watchAllowPrivate: Volatile<boolean>
   /** Launcher that restarts the host process; resolved against PATH. */
   restartCommand: Volatile<string>
+  /** systemd user unit used when the host is supervised; empty uses the default. */
+  restartService: Volatile<string>
   /** Local quiet window for silent reminders, e.g. "22:00-08:00"; empty disables it. */
   quietHours: Volatile<string>
 }

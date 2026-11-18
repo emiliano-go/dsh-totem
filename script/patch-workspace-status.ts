@@ -6,9 +6,9 @@
  *    whether a Session inside is running, waiting for input, or finished
  *    unread. One primary marker per Workspace (pending > running > done, the
  *    same precedence the Session row uses) is overlaid on the folder icon.
- * 2. A tiny "N pending" card above the Workspaces header, counting Sessions
- *    that are waiting on the user (yellow) or finished unread (green). Yellow
- *    wins because waiting blocks progress.
+ * 2. A tiny summary above the Workspaces header. Pending interactions
+ *    (approval, plan review, answer) and finished-unread Sessions are counted
+ *    separately: a finished-unread Session is "unread", never "pending".
  *
  * Neither surface is a replaceable slot, so the installed package bundle is
  * edited directly. Idempotent; a dsh upgrade/reinstall overwrites it, so rerun
@@ -118,29 +118,33 @@ const folderWithStatus = `\t\t\t\t\t(0, react_jsx_runtime.jsx)("span", {
 \t\t\t\t\t}),`
 
 const pendingSummary = `\t\t/**
-\t\t* Sidebar summary above the Workspaces header: how many Sessions are waiting
-\t\t* on the user (a pending interaction) or finished unread. Yellow outranks
-\t\t* green, because waiting blocks progress. Lives in this bundle because the
-\t\t* shell exposes no slot between the panel list and the browsing region.
+\t\t* Sidebar summary above the Workspaces header: pending interactions
+\t\t* (approval, plan review, answer) and finished-unread completions are
+\t\t* different states and are counted separately. Lives in this bundle
+\t\t* because the shell exposes no slot between the panel list and browsing.
 \t\t*/
 \t\tfunction TotemPendingSummary({ useSessionStatus, useSessions }) {
 \t\t\tconst statuses = useSessionStatus((state) => state);
 \t\t\tconst list = useSessions((state) => state);
 \t\t\tlet waiting = 0;
-\t\t\tlet done = 0;
+\t\t\tlet unread = 0;
 \t\t\tfor (const id of list.ids) {
 \t\t\t\tconst row = list.byId[id];
 \t\t\t\tif (row === void 0 || row.archived === true) continue;
+\t\t\t\t// Subagent Sessions have no sidebar row; their completion is part of
+\t\t\t\t// the parent's work, not a separate item the user has to read.
+\t\t\t\tif (row.origin === "subagent" || row.parentSessionId !== void 0) continue;
 \t\t\t\tconst status = statuses.get(id);
 \t\t\t\tif (status?.pendingInteraction !== void 0) waiting += 1;
-\t\t\t\telse if (status?.completionUnread === true) done += 1;
+\t\t\t\telse if (status?.completionUnread === true) unread += 1;
 \t\t\t}
-\t\t\tconst total = waiting + done;
-\t\t\tif (total === 0) return null;
-\t\t\tconst label = total + " pending";
+\t\t\tif (waiting + unread === 0) return null;
+\t\t\tconst label = waiting > 0
+\t\t\t\t? waiting + " pending" + (unread > 0 ? " · " + unread + " unread" : "")
+\t\t\t\t: unread + " unread";
 \t\t\tconst detail = waiting > 0
-\t\t\t\t? waiting + " waiting on you" + (done > 0 ? ", " + done + " done" : "")
-\t\t\t\t: done + " done";
+\t\t\t\t? waiting + " waiting on you" + (unread > 0 ? ", " + unread + " unread" : "")
+\t\t\t\t: unread + " unread";
 \t\t\treturn (0, react_jsx_runtime.jsxs)("div", {
 \t\t\t\tclassName: "totem-pending-card",
 \t\t\t\trole: "status",

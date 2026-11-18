@@ -13,6 +13,7 @@ import type { OverviewService } from './overview.ts'
 import type { ConflictInbox } from './conflicts.ts'
 import type { RestartController } from './restart.ts'
 import type { UnreadStore } from './unread.ts'
+import { handleBrowserLogin, handleLoginCookie, handleLoginPage, loginQrFor, loginUrlFor } from './login.ts'
 
 const BODY_LIMIT = 1_000_000
 
@@ -42,6 +43,8 @@ interface AssistantDeps {
 interface RouteContext {
   /** Port this request arrived on, so the launcher targets the same one. */
   port?: number
+  /** Stable browser login link for this authority, when available. */
+  loginUrl?: string | null
 }
 
 function json(res: ServerResponse, status: number, value: unknown): void {
@@ -91,10 +94,17 @@ const routes = {
     path: string,
     url: URL,
     deps: AssistantDeps,
-    _context: RouteContext = {},
+    context: RouteContext = {},
   ): Promise<unknown> {
     if (path === '/totem/ping') return { ok: true }
-    if (path === '/totem/host') return deps.restart.status()
+    if (path === '/totem/host') {
+      const loginUrl = context.loginUrl ?? null
+      return {
+        ...deps.restart.status(),
+        loginUrl,
+        loginQr: loginUrl === null ? null : loginQrFor(loginUrl),
+      }
+    }
     if (path === '/totem/verify/rules') {
       return {
         rules: ruleCatalog(),
@@ -239,10 +249,16 @@ export function registerAssistantRoutes(
       handler: (req: IncomingMessage, res: ServerResponse) => {
         void (async () => {
           try {
+            const url = new URL(req.url ?? '/', 'http://localhost')
+            const login = /^\/totem\/login\/([A-Za-z0-9_-]{20,})(\/cookie|\/continue)?$/u.exec(url.pathname)
+            if (req.method === 'GET' && login !== null) {
+              if (login[2] === '/cookie') return handleLoginCookie(req, res, login[1])
+              if (login[2] === '/continue') return handleBrowserLogin(req, res, login[1])
+              return handleLoginPage(req, res, login[1])
+            }
             const token = deps.totem.config.apiToken.get().trim()
             if (!authorized(req, token)) return json(res, 401, { error: 'unauthorized' })
-            const url = new URL(req.url ?? '/', 'http://localhost')
-            const context: RouteContext = { port: req.socket.localPort }
+            const context: RouteContext = { port: req.socket.localPort, loginUrl: loginUrlFor(req) }
             if (req.method === 'GET') return json(res, 200, await routes.GET(url.pathname, url, deps, context))
             if (req.method === 'POST') return json(res, 200, await routes.POST(url.pathname, await body(req), deps, context))
             return json(res, 405, { error: 'method not allowed' })

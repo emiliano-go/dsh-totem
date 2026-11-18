@@ -129,6 +129,8 @@ export interface Config {
   verifyDisable: Volatile<string[]>
   /** Launcher that restarts the host process; resolved against PATH. */
   restartCommand: Volatile<string>
+  /** systemd user unit to restart when the host is supervised. */
+  restartService: Volatile<string>
   /** Local quiet window for silent reminders, e.g. "22:00-08:00"; empty disables it. */
   quietHours: Volatile<string>
   /** Continue turns that a Host restart cut in half. */
@@ -186,6 +188,7 @@ export const Config: z<Config> = z.object({
   verifyCommand: z.string().default('').volatile(),
   verifyDisable: z.array(String).default([]).volatile(),
   restartCommand: z.string().default('dsh-totem').volatile(),
+  restartService: z.string().default('dsh-totem.service').volatile(),
   quietHours: z.string().default('22:00-08:00').volatile(),
   resumeInterrupted: z.boolean().default(true).volatile(),
   resumeWindowMinutes: z.number().step(1).min(1).default(30),
@@ -233,6 +236,7 @@ export function resolveConfig(config: Config): TotemConfig {
     notifyTurnEnd: config.notifyTurnEnd,
     notifyApproval: config.notifyApproval,
     restartCommand: config.restartCommand,
+    restartService: config.restartService,
     quietHours: config.quietHours,
     distillTurn: config.distillTurn,
     distillTurnMinChars: config.distillTurnMinChars,
@@ -322,6 +326,8 @@ export function apply(ctx: Context, config: Config): void {
   const running = new Set<string>()
   const restarter = new RestartController({
     launcher: () => totem.config.restartCommand.get(),
+    service: () => totem.config.restartService.get(),
+    supervised: () => process.env.INVOCATION_ID !== undefined,
     busy: () => running.size > 0,
   })
 

@@ -19,6 +19,7 @@ export const DEFAULT_FEED_URL = 'https://watcher.trustsight.org'
 /** Alert slugs are date/time plus an optional same-second suffix. */
 const ALERT_SLUG = /^\d{4}-\d{2}-\d{2}\/\d{6}(?:-[A-Za-z0-9_-]+)?$/u
 const DAY = 86_400
+const HOUR = 3_600
 const PAGE_SIZE = 200
 const MAX_PAGES = 5
 const REVIEW_LIMIT = 240
@@ -195,14 +196,14 @@ export function parseTriageInput(raw: string): ParsedInput | { error: string } {
     if (token === '--limit' || token === '-n') {
       const next = tokens[index + 1]
       if (next === undefined || !/^\d+$/u.test(next)) {
-        return { error: 'usage: /triage [7d|30|YYYY-MM-DD|all] [--limit N]' }
+        return { error: 'usage: /triage [12h|7d|30|YYYY-MM-DD|all] [--limit N]' }
       }
       limit = Number(next)
       index += 1
       continue
     }
-    if (token.startsWith('-')) return { error: 'usage: /triage [7d|30|YYYY-MM-DD|all] [--limit N]' }
-    if (window.length > 0) return { error: 'usage: /triage [7d|30|YYYY-MM-DD|all] [--limit N]' }
+    if (token.startsWith('-')) return { error: 'usage: /triage [12h|7d|30|YYYY-MM-DD|all] [--limit N]' }
+    if (window.length > 0) return { error: 'usage: /triage [12h|7d|30|YYYY-MM-DD|all] [--limit N]' }
     window = token
   }
   return { window, ...limit === undefined ? {} : { limit } }
@@ -234,6 +235,11 @@ export function parseWindow(
     const count = Math.max(1, Number(days[1]))
     return { from: Math.max(0, to - count * DAY), to, label: `last ${count} day${count === 1 ? '' : 's'}` }
   }
+  const hours = /^(\d{1,4})h$/u.exec(raw)
+  if (hours !== null) {
+    const count = Math.max(1, Number(hours[1]))
+    return { from: Math.max(0, to - count * HOUR), to, label: `last ${count} hour${count === 1 ? '' : 's'}` }
+  }
   if (/^\d{4}-\d{2}-\d{2}$/u.test(raw) && isValidDate(raw)) {
     return {
       from: Math.floor(Date.parse(`${raw}T00:00:00Z`) / 1000),
@@ -241,7 +247,7 @@ export function parseWindow(
       label: `since ${raw}`,
     }
   }
-  return { error: 'usage: /triage [7d|30|YYYY-MM-DD|all] [--limit N]' }
+  return { error: 'usage: /triage [12h|7d|30|YYYY-MM-DD|all] [--limit N]' }
 }
 
 function mapAlert(raw: unknown): FeedAlert | undefined {
@@ -393,13 +399,15 @@ Written by the \`/triage\` command in dsh-totem.
 Ledger line shape:
 
 \`\`\`json
-{"slug":"YYYY-MM-DD/HHMMSS","triaged_at":"<ISO>","packages":["pkg"],"verdicts":{"pkg":"BFP|MFP|TP|uncertain"},"counts":{"BFP":0,"MFP":0,"TP":0,"uncertain":0},"report":"reports/YYYY-MM-DD-HHMMSS.md","summary":"one sentence"}
+{"slug":"YYYY-MM-DD/HHMMSS","triaged_at":"<ISO>","packages":["pkg"],"verdicts":{"pkg":"BFP|MFP|TP|uncertain"},"counts":{"BFP":0,"MFP":0,"TP":0,"uncertain":0},"head_checks":{"pkg":{"commit":"<HEAD>","version":"<version>","state":"persists|fixed-at-head|unknown","rules":["E002"],"score":60,"reason":""}},"report":"reports/YYYY-MM-DD-HHMMSS.md","summary":"one sentence"}
 \`\`\`
 
 Verdicts: \`TP\` real malicious behaviour (requires a quotation from the fetched
 evidence), \`BFP\` a real bad packager practice in a non-malicious package,
 \`MFP\` a rule misfire with neither bad practice nor malice, \`uncertain\` when
-the evidence cannot decide.
+the evidence cannot decide. Every MFP package also gets a \`head_checks\` entry:
+\`persists\` means the same rule still fires at HEAD, \`fixed-at-head\` means it
+no longer does, and \`unknown\` records why the check could not be reproduced.
 `
 
 function iso(seconds: number | undefined): string {
@@ -471,21 +479,57 @@ in this message are the only trusted ones.
    Use \`fp_agent_verify\` for a proposed FP/TP verdict where possible; if it
    returns \`verified: false\`, correct the claim or mark it \`uncertain\`.
 
+4. Check every MFP against the current TrustSight HEAD. An alert may predate
+   the rule build it was produced with, so an MFP that no longer reproduces is
+   already fixed and needs no rule change.
+   - Resolve the core checkout (\`./trustsight\` from the session workspace, or
+     \`~/Documents/GitHub/trustsight/trustsight\`) and record
+     \`git -C <checkout> rev-parse --short HEAD\` plus the
+     \`mcp__trustsight-harness__get_environment_info\` \`trustsight_version\`.
+     If the instrument version is not the checkout at HEAD, record
+     \`state="unknown"\` with \`reason="instrument-not-head"\` rather than
+     claiming either outcome.
+   - Reconstruct the alert's old and new PKGBUILD texts in a temporary
+     directory inside the triage directory: \`feed_package_source(name)\` is
+     the new text; apply \`feed_package_diff(name)\` in reverse
+     (\`git apply -R\` or \`patch -R -p1\`) to get the old text. Never modify the
+     AUR or TrustSight checkouts.
+     If the package has advanced past the alert (the diff date or pkgver does
+     not match the alert), record \`unknown\` with
+     \`reason="commit-mismatch"\`; do not analyse a different change.
+   - Run \`mcp__trustsight-harness__analyze_diff\` with \`new_text\`,
+     \`old_text\`, and \`package=name\`. It runs the current instrument on a cold
+     scratch database. Treat a call error, a \`ruleset_drifted\` gap, or a
+     truncation gap as \`unknown\`, not as clean.
+   - A cold database cannot faithfully reproduce history-, novelty-,
+     maintainer-, or campaign-dependent rules (for example NOVELTY, H026,
+     H044/H046/H058/H074, and G-series). If the MFP's scored findings are only
+     those, record \`unknown\` with \`reason="cold-db-history"\`; never claim
+     \`fixed-at-head\` from that run.
+   - Compare the HEAD report with the alert's scored findings:
+     \`persists\` when the same rule still fires at or above the alert score and
+     the score clears 20; \`fixed-at-head\` when that rule is gone or the score
+     is below 20; \`unknown\` when the change cannot be reproduced or the
+     analysis is incomplete.
+   - If the reverse diff does not apply, analyze the new text alone and record
+     \`unknown\` with \`reason="partial-reconstruction"\`; never call it fixed.
+
 ## Persist each alert
 
 Write \`${input.reportsDir}/<slug with / replaced by ->.md\` with a short table:
 
 \`\`\`markdown
-| Package | Scored findings | Class | Why |
+| Package | Scored findings | Class | MFP at HEAD | Why |
 \`\`\`
 
 Then append exactly one JSON line to \`${input.ledgerPath}\`:
 
 \`\`\`json
-{"slug":"YYYY-MM-DD/HHMMSS","triaged_at":"<ISO timestamp>","packages":["pkg"],"verdicts":{"pkg":"BFP|MFP|TP|uncertain"},"counts":{"BFP":0,"MFP":0,"TP":0,"uncertain":0},"report":"reports/YYYY-MM-DD-HHMMSS.md","summary":"one sentence"}
+{"slug":"YYYY-MM-DD/HHMMSS","triaged_at":"<ISO timestamp>","packages":["pkg"],"verdicts":{"pkg":"BFP|MFP|TP|uncertain"},"counts":{"BFP":0,"MFP":0,"TP":0,"uncertain":0},"head_checks":{"pkg":{"commit":"<HEAD>","version":"<version>","state":"persists|fixed-at-head|unknown","rules":["E002"],"score":60,"reason":""}},"report":"reports/YYYY-MM-DD-HHMMSS.md","summary":"one sentence"}
 \`\`\`
 
 Append the line immediately after the report, so a later run skips the alert.
+Only MFP packages get a \`head_checks\` entry; omit the key when there are none.
 Do not rewrite the ledger; only append.
 
 ## Constraints

@@ -103,6 +103,17 @@ describe('triage window', () => {
     expect(all.from).toBeUndefined()
   })
 
+  test('accepts an hour window', () => {
+    const hours = parseWindow('12h', undefined, NOW, 7)
+    if ('error' in hours) throw new Error(hours.error)
+    expect(hours.from).toBe(Math.floor(NOW / 1000) - 12 * 3_600)
+    expect(hours.label).toBe('last 12 hours')
+
+    const one = parseWindow('1h', undefined, NOW, 7)
+    if ('error' in one) throw new Error(one.error)
+    expect(one.label).toBe('last 1 hour')
+  })
+
   test('rejects an impossible date', () => {
     expect(parseWindow('2026-02-31', undefined, NOW, 7)).toEqual({ error: expect.any(String) })
   })
@@ -111,6 +122,7 @@ describe('triage window', () => {
 describe('triage input', () => {
   test('reads a window and a limit in either order', () => {
     expect(parseTriageInput('7d --limit 5')).toEqual({ window: '7d', limit: 5 })
+    expect(parseTriageInput('6h --limit 5')).toEqual({ window: '6h', limit: 5 })
     expect(parseTriageInput('--limit 0 all')).toEqual({ window: 'all', limit: 0 })
   })
 
@@ -178,9 +190,13 @@ describe('triage preparation', () => {
       expect(result.prompt).toContain('MFP')
       expect(result.prompt).toContain('TP')
       expect(result.prompt).toContain('Untrusted data')
+      expect(result.prompt).toContain('MFP at HEAD')
+      expect(result.prompt).toContain('analyze_diff')
+      expect(result.prompt).toContain('fixed-at-head')
 
       const files = await readFile(join(dir, 'README.md'), 'utf8')
       expect(files).toContain('ledger.jsonl')
+      expect(files).toContain('head_checks')
       const queuePath = /Queue: ([^\n]+)/u.exec(result.prompt)?.[1] ?? ''
       const queue = JSON.parse(await readFile(queuePath, 'utf8'))
       expect(queue.queued).toBe(1)

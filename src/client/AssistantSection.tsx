@@ -343,6 +343,31 @@ export function AssistantSection(props: AssistantSectionProps) {
                 launcher: {state.host?.launcher ?? 'not found (set restartCommand)'}
               </span>
             </div>
+            <div style={CARD}>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>Permanent login</span>
+              <span style={MUTED}>
+                Open this link once on a new device. It is derived from the persistent session secret, so it
+                survives restarts and never needs a copied token. Reset the browser-session credential to rotate it.
+              </span>
+              {state.host?.loginUrl
+                ? (
+                  <>
+                    <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{state.host.loginUrl}</code>
+                    <div style={ROW_ACTIONS}>
+                      <Button
+                        variant="ghost"
+                        onClick={() => { void navigator.clipboard?.writeText(state.host?.loginUrl ?? '') }}
+                      >
+                        Copy link
+                      </Button>
+                    </div>
+                    {state.host.loginQr
+                      ? <img src={state.host.loginQr} alt="Permanent login QR code" width={180} height={180} style={{ background: '#fff', borderRadius: 8 }} />
+                      : null}
+                  </>
+                )
+                : <span style={MUTED}>Unavailable: the host could not read the browser-session secret.</span>}
+            </div>
             <div style={{ ...ROW_ACTIONS, alignItems: 'stretch' }}>
               <Button
                 variant="primary"

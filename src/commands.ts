@@ -294,7 +294,7 @@ export function registerTotemCommands(
     register({
       name: 'triage',
       description: 'Triage untriaged TrustSight watcher alerts and record them in alert-triage/ledger.jsonl.',
-      input: { hint: '[7d|30|YYYY-MM-DD|all] [--limit N]' },
+      input: { hint: '[12h|7d|30|YYYY-MM-DD|all] [--limit N]' },
       async handler({ agent, rawInput, signal }): Promise<Result> {
         const session = (agent as { session?: { header?: { cwd?: string } } }).session
         try {

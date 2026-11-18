@@ -19,12 +19,16 @@ function harness(options: {
   launcher?: string
   files?: string[]
   dirs?: string[]
+  supervised?: boolean
+  service?: string
 } = {}) {
   const files = new Set(options.files ?? ['/opt/bin/dsh-totem'])
   const spawns: SpawnCall[] = []
   const controller = new RestartController({
     launcher: () => options.launcher ?? 'dsh-totem',
     busy: options.busy ?? (() => false),
+    service: () => options.service ?? 'dsh-totem.service',
+    supervised: () => options.supervised ?? false,
     dirs: () => options.dirs ?? ['/opt/bin'],
     exists: path => files.has(path),
     env: { PATH: '/opt/bin', HOME: '/home/test' } as NodeJS.ProcessEnv,
@@ -68,8 +72,17 @@ test('an idle host is relaunched after the delay, targeting the request port', a
   expect(spawns[0].unrefs).toBe(1)
 })
 
-test('a busy host defers the restart until the turn boundary', async () => {
-  let busy = true
+test('a supervised host asks systemd for the restart instead of spawning in its cgroup', async () => {
+  const { controller, spawns } = harness({ supervised: true, service: 'dsh-totem.service' })
+  controller.schedule({ delayMs: 0, port: 3080 })
+  await settle()
+  expect(spawns).toHaveLength(1)
+  expect(spawns[0].command).toBe('systemctl')
+  expect(spawns[0].args).toEqual(['--user', '--no-block', 'restart', 'dsh-totem.service'])
+  expect(spawns[0].unrefs).toBe(1)
+})
+
+test('a busy host defers the restart until the turn boundary', async () => {  let busy = true
   const { controller, spawns } = harness({ busy: () => busy })
   const plan = controller.schedule({ delayMs: 0 })
   expect(plan.mode).toBe('idle')

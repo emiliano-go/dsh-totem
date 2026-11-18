@@ -255,7 +255,7 @@ exceptions, because the evidence work needs a real agent turn.
 | `/forget <id> [reason]` | Delete one memory with a reason. |
 | `/memory` | Active/archived counts, open conflicts, and stale evidence. |
 | `/handoff <summary>` | Store a session handoff before the context is compacted. |
-| `/triage [7d\|30\|YYYY-MM-DD\|all] [--limit N]` | Queue a model turn that triages untriaged TrustSight watcher alerts and records each one in `alert-triage/ledger.jsonl`. |
+| `/triage [12h\|7d\|30\|YYYY-MM-DD\|all] [--limit N]` | Queue a model turn that triages untriaged TrustSight watcher alerts and records each one in `alert-triage/ledger.jsonl`. |
 | `/research <question>` | Queue a model turn that runs the deep-research protocol and writes a cited report to `research/<slug>-<date>.md`. |
 
 ### TrustSight triage
@@ -284,7 +284,21 @@ a one-day overlap, or the last 7 days when the ledger is empty. `all` removes
 the lower bound; the feed is still paged. The default batch is 20 alerts
 because one turn cannot perform evidence triage on the ~200 alerts a week of
 feed carries; the result text reports how many remain and repeated runs drain
-the backlog.
+the backlog. A window can be hours (`12h`), days (`7d`, or a bare `30` for
+30 days), a `YYYY-MM-DD` date, or `all`.
+
+Every package classified `MFP` is rechecked against the current TrustSight
+**HEAD**: the turn resolves the core checkout commit and instrument version,
+reconstructs the old and new PKGBUILD texts from the alert diff, and runs
+`analyze_diff` with them. The report's `MFP at HEAD` column and the ledger's
+`head_checks` map record `persists`, `fixed-at-head`, or `unknown` (with a
+reason). A `fixed-at-head` MFP is still a false positive for that alert, but it
+no longer needs a rule fix. If the instrument version does not match the
+checkout at HEAD, the result is `unknown` rather than a false clean. Because
+`analyze_diff` uses a cold scratch database, history-, novelty-, maintainer-,
+and campaign-dependent findings cannot be replayed faithfully; those MFPs are
+recorded `unknown` with a `cold-db-history` reason instead of being called
+fixed.
 
 Writes stay under the session workspace so the file sandbox admits them. Run
 the command from a session whose workspace is the TrustSight checkout to keep
@@ -433,6 +447,20 @@ materialized (143 MB). Adding a skill is one line in the lock file; updates are
 `humanizer`, `logo-design`, `diagram-design`. `bun run skills:install --check`
 prints the plan, and `--no-external` limits the run to this package's own
 skills.
+
+### Claude SEO
+
+`bun run script/install-claude-seo.ts` installs
+[claude-seo](https://github.com/AgriciDaniel/claude-seo) for DSH: it copies the
+29 `seo*` skills into `~/.agents/skills`, rewrites the upstream
+`${CLAUDE_PLUGIN_ROOT}` launcher paths for that location, keeps the 20
+sub-agent prompts under `seo/agents/`, and builds the isolated Python/Chromium
+runtime in `~/.local/share/claude-seo`. Re-run it after a claude-seo release;
+`--skip-browser` skips the 700 MB Chromium download. Claude Code's
+`PostToolUse` schema hook has no DSH equivalent and is not installed, so schema
+validation runs through the skills' own scripts instead. The installer also
+strips the upstream main skill's "Community Footer" instruction, which would
+otherwise append a Skool promotional banner after every audit.
 
 ## Conflict inbox
 

@@ -101,6 +101,10 @@ export interface HostStatus {
   pid: number
   busy: boolean
   launcher: string | null
+  /** Stable browser login link, valid across restarts. */
+  loginUrl?: string | null
+  /** PNG data URL for the login link, when the host could render one. */
+  loginQr?: string | null
 }
 
 /** Snapshot rendered by the section. */
