@@ -59,7 +59,7 @@ test('every volatile config field reaches the resolved config', () => {
   const volatileKeys = Object.keys(dict).filter(key => dict[key]?.meta?.volatile === true)
   expect(volatileKeys.length).toBeGreaterThan(10)
   // Read straight off the plugin config; never part of TotemConfig.
-  const consumedElsewhere = new Set(['embeddingBackend', 'verifyCommand', 'verifyDisable'])
+  const consumedElsewhere = new Set(['embeddingBackend', 'verifyCommand', 'verifyDisable', 'resumeInterrupted'])
   const parsed = (Config as unknown as (value: unknown) => Record<string, unknown>)({ ntfyTopic: 'alerts' })
   const resolved = resolveConfig(parsed as never) as unknown as Record<string, unknown>
   const dropped = volatileKeys.filter(key => !consumedElsewhere.has(key) && resolved[key] !== parsed[key])

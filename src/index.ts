@@ -23,6 +23,7 @@ import { registerAssistantRoutes } from './routes.ts'
 import { registerNotificationHooks, registerNotifyTool } from './notify.ts'
 import { registerCiTools } from './ci.ts'
 import { UnreadStore } from './unread.ts'
+import { registerInterruptedTurnResume } from './resume.ts'
 import { OverviewService } from './overview.ts'
 import { statePath } from './store.ts'
 import { MEMORY_PROMPT } from './prompt.ts'
@@ -129,6 +130,16 @@ export interface Config {
   restartCommand: Volatile<string>
   /** Local quiet window for silent reminders, e.g. "22:00-08:00"; empty disables it. */
   quietHours: Volatile<string>
+  /** Continue turns that a Host restart cut in half. */
+  resumeInterrupted: Volatile<boolean>
+  /** Only Sessions active within this many minutes are considered. */
+  resumeWindowMinutes: number
+  /** Maximum Sessions resumed per boot. */
+  resumeMaxSessions: number
+  /** Maximum auto-resume attempts per Session per cooldown window. */
+  resumeMaxAttempts: number
+  /** Cooldown over which resume attempts are counted. */
+  resumeCooldownMinutes: number
 }
 
 /** Loader schema; every field is live so the Plugins page can edit it. */
@@ -175,6 +186,11 @@ export const Config: z<Config> = z.object({
   verifyDisable: z.array(String).default([]).volatile(),
   restartCommand: z.string().default('dsh-totem').volatile(),
   quietHours: z.string().default('22:00-08:00').volatile(),
+  resumeInterrupted: z.boolean().default(true).volatile(),
+  resumeWindowMinutes: z.number().step(1).min(1).default(30),
+  resumeMaxSessions: z.number().step(1).min(1).default(3),
+  resumeMaxAttempts: z.number().step(1).min(1).default(3),
+  resumeCooldownMinutes: z.number().step(1).min(1).default(30),
 })
 
 export function resolveConfig(config: Config): TotemConfig {
@@ -368,6 +384,13 @@ export function apply(ctx: Context, config: Config): void {
     overview,
     conflicts,
     restart: restarter,
+  })
+  registerInterruptedTurnResume(ctx, {
+    enabled: config.resumeInterrupted,
+    windowMinutes: config.resumeWindowMinutes,
+    maxSessions: config.resumeMaxSessions,
+    maxAttempts: config.resumeMaxAttempts,
+    cooldownMinutes: config.resumeCooldownMinutes,
   })
   ctx.effect(() => { reminders.start(); return () => { reminders.stop() } }, 'dsh-totem: reminders')
   ctx.effect(() => { watches.start(); return () => { watches.stop() } }, 'dsh-totem: watches')
