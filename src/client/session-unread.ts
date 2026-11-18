@@ -54,6 +54,8 @@ export class SessionUnreadController {
   private readonly pending = new Set<string>()
   /** Sessions with an in-flight Host clear, so a poll cannot duplicate it. */
   private readonly clearing = new Set<string>()
+  /** Completion ids seen on the previous status pass, so only transitions track. */
+  private readonly observedUnread = new Set<string>()
   /** Serializes sync runs (initial, focus, poll). */
   private syncing: Promise<void> | undefined
 
@@ -231,11 +233,18 @@ export class SessionUnreadController {
       // DSH raises the completion dot in the client that observed the turn
       // finish. Mirror that automatic mark to the Host as well, so a phone
       // that was not connected (or was not that Session's view) still sees it.
+      const unread = new Set<string>()
       for (const [sessionId, status] of statuses) {
         if (status.completionUnread !== true) continue
+        unread.add(sessionId)
         if (status.running === true || sessionId === current) continue
-        this.trackCompletion(sessionId)
+        // Only a transition: a dot still true from an earlier pass was either
+        // already tracked or cleared on another device, and re-pushing it
+        // every status event would resurrect a clear.
+        if (!this.observedUnread.has(sessionId)) this.trackCompletion(sessionId)
       }
+      this.observedUnread.clear()
+      for (const sessionId of unread) this.observedUnread.add(sessionId)
     })
   }
 

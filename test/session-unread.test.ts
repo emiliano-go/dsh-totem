@@ -278,6 +278,27 @@ describe('cross-device sync', () => {
     expect(host.calls.mark).toEqual([])
     dispose()
   })
+
+  test('a dot already observed is not pushed again after another device clears it', async () => {
+    const storage = fakeStorage()
+    const { session, statuses, emit, state } = fakeSession({ current: 'elsewhere' })
+    const host = fakeRemote()
+    const controller = new SessionUnreadController(session, storage, host.remote)
+    const dispose = controller.watch()
+
+    state.completionUnread.add('once')
+    statuses.set('once', { running: false, completionUnread: true })
+    emit()
+    await settle()
+    expect(host.calls.mark).toEqual(['once'])
+
+    // Another device opens it; a later status pass must not resurrect the dot.
+    host.set([])
+    emit()
+    await settle()
+    expect(host.calls.mark).toEqual(['once'])
+    dispose()
+  })
 })
 
 describe('unread menu action', () => {
