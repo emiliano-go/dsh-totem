@@ -115,7 +115,7 @@ describe('interrupted turn resumer', () => {
     expect(prompts).toHaveLength(1)
   })
 
-  test('skips running, subagent, blank, and stale sessions', async () => {
+  test('skips running, non-continuable subagent, blank, and stale sessions', async () => {
     const old = 1_000_000 - 31 * 60_000
     const { resumer, prompts } = harness({
       sessions: [
@@ -128,6 +128,81 @@ describe('interrupted turn resumer', () => {
     })
     const report = await resumer.run()
     expect(report.resumed).toBe(0)
+    expect(prompts).toEqual([])
+  })
+
+  test('wakes the parent once for interrupted continuable subagents', async () => {
+    const logs = {
+      parent: completedLog(),
+      childA: [
+        event('session', { parentSession: 'parent' }),
+        event('subagent/descriptor', { mode: 'continuable', label: 'Technical audit' }),
+        ...shutdownLog(),
+      ],
+      childB: [
+        event('session', { parentSession: 'parent' }),
+        event('subagent/descriptor', { mode: 'continuable', label: 'Schema audit' }),
+        ...shutdownLog(),
+      ],
+    }
+    const { resumer, prompts } = harness({
+      sessions: [
+        summary('parent'),
+        summary('childA', { origin: 'subagent', parentSessionId: 'parent' }),
+        summary('childB', { origin: 'subagent', parentSessionId: 'parent' }),
+      ],
+      logs,
+    })
+    const report = await resumer.run()
+    expect(report.resumed).toBe(1)
+    expect(prompts).toHaveLength(1)
+    expect(prompts[0].sessionId).toBe('parent')
+    expect(prompts[0].text).toContain('subagent recovery')
+    expect(prompts[0].text).toContain('Technical audit')
+    expect(prompts[0].text).toContain('childA')
+    expect(prompts[0].text).toContain('childB')
+
+    // The same child tails must not queue a second parent recovery.
+    await resumer.run()
+    expect(prompts).toHaveLength(1)
+  })
+
+  test('does not treat one-shot children as resumable', async () => {
+    const logs = {
+      parent: completedLog(),
+      child: [
+        event('session', { parentSession: 'parent' }),
+        event('subagent/descriptor', { mode: 'one-shot', label: 'One shot' }),
+        ...shutdownLog(),
+      ],
+    }
+    const { resumer, prompts } = harness({
+      sessions: [
+        summary('parent'),
+        summary('child', { origin: 'subagent', parentSessionId: 'parent' }),
+      ],
+      logs,
+    })
+    expect((await resumer.run()).resumed).toBe(0)
+    expect(prompts).toEqual([])
+  })
+
+  test('skips subagents whose parent is not a live top-level Session', async () => {
+    const logs = {
+      nested: [
+        event('session', { parentSession: 'parent' }),
+        event('subagent/descriptor', { mode: 'continuable', label: 'Nested child' }),
+        ...shutdownLog(),
+      ],
+    }
+    const { resumer, prompts } = harness({
+      sessions: [
+        summary('parent', { origin: 'subagent' }),
+        summary('nested', { origin: 'subagent', parentSessionId: 'parent' }),
+      ],
+      logs,
+    })
+    expect((await resumer.run()).resumed).toBe(0)
     expect(prompts).toEqual([])
   })
 

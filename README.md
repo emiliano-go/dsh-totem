@@ -525,6 +525,13 @@ A delegated agent that runs in a worktree or a scratch directory would otherwise
 write into a second, near-empty store. `subagent/start` pins the child session to
 its parent's project, so what a child learns is visible to the parent.
 
+On boot, interrupted **continuable** children are grouped by direct parent. The
+parent gets one recovery prompt listing each child's id and label; it resumes
+them with `send_message`, which uses DSH's cold-resume path and delivers each
+result back to the parent. Starting child turns directly would finish work whose
+result never reaches the parent. One-shot children are skipped, the child window
+is at least two hours, and the resume ledger keeps the pass idempotent.
+
 ## Evaluation
 
 ```sh

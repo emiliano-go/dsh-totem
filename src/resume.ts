@@ -7,11 +7,17 @@
  * before the process exits; a crash leaves the tail turn open. Both are
  * detectable from the stored log, and both leave the work unfinished.
  *
- * On boot this module scans recent, non-subagent, non-running Sessions, finds
- * those two shapes, and queues one continuation prompt through
+ * On boot this module scans recent, non-running Sessions, finds those two
+ * shapes, and queues one continuation prompt through
  * `sessionController.prompt()`. That call resumes the cold Session, appends the
  * synthetic closers for a crash tail, and starts a new turn whose first message
  * tells the agent to verify state instead of repeating side effects.
+ *
+ * A continuable subagent cannot deliver its result without a live parent, so a
+ * group of interrupted children wakes their top-level parent once with their
+ * ids and labels. The parent resumes each child through the normal
+ * `send_message` cold-resume path; starting child turns directly would finish
+ * work whose result never reaches the parent.
  *
  * A small ledger makes the pass idempotent and crash-loop safe: the same tail
  * event never resumes twice, and one Session cannot be auto-resumed more than
@@ -41,6 +47,7 @@ export interface ResumeSummary {
   running?: boolean
   blank?: boolean
   origin?: 'subagent'
+  parentSessionId?: string
   agentAvailable?: boolean
 }
 
@@ -95,6 +102,9 @@ export const RESUME_DEFAULTS = {
   maxScan: 20,
 } as const
 
+/** Interrupted children keep a wider window: a parent can sit idle for hours. */
+export const SUBAGENT_RESUME_WINDOW_MS = 2 * 60 * 60_000
+
 interface ResumeLedger {
   version: 1
   sessions: Record<string, { seq: number; attempts: number; lastAt: number }>
@@ -143,6 +153,43 @@ export function resumeRequestId(sessionId: string, lastSeq: number): string {
   return `totem-resume:${sessionId}:${lastSeq}`
 }
 
+/** A continuable child whose turn a restart interrupted. */
+interface SubagentOrphan {
+  parentSessionId: string
+  childSessionId: string
+  label: string
+  lastSeq: number
+}
+
+/** Read the durable parent recorded by a child Session header. */
+function parentOf(events: readonly ResumeEvent[]): string | undefined {
+  const header = events.find(event => event.type === 'session')?.data as
+    | { parentSession?: string }
+    | undefined
+  const parent = header?.parentSession
+  return typeof parent === 'string' && parent.length > 0 ? parent : undefined
+}
+
+/** Whether a child log carries a continuable descriptor, with its label. */
+function continuableSubagent(events: readonly ResumeEvent[]): { label: string } | undefined {
+  const descriptor = events.find(event => event.type === 'subagent/descriptor')?.data as
+    | { mode?: string; label?: string }
+    | undefined
+  if (descriptor?.mode !== 'continuable') return undefined
+  return { label: typeof descriptor.label === 'string' ? descriptor.label : '' }
+}
+
+/** Ask the parent to resume interrupted continuable children by id. */
+export function subagentRecoveryPrompt(children: readonly SubagentOrphan[]): string {
+  return [
+    '(dsh-totem subagent recovery) The DSH host restarted while these delegated subagents were mid-turn:',
+    ...children.map(child => `- ${child.label.length > 0 ? child.label : child.childSessionId} (${child.childSessionId})`),
+    '',
+    'Resume each child with the send_message tool: pass its child id and ask it to continue the interrupted task from where it stopped, verifying state instead of repeating completed steps.',
+    'Do not spawn replacements for these children. Collect their results, then continue the parent task that the restart interrupted.',
+  ].join('\n')
+}
+
 /** Collaborators and policy for one boot pass. */
 export interface ResumeDeps {
   controller: ResumeSessionController
@@ -187,20 +234,21 @@ export class InterruptedTurnResumer {
     const candidates = items
       .filter(item =>
         item.blank !== true
-        && item.origin !== 'subagent'
         && item.running !== true
         && item.agentAvailable !== true
-        && item.updatedAt >= now - windowMs)
+        && item.updatedAt >= now - (item.origin === 'subagent'
+          ? Math.max(windowMs, SUBAGENT_RESUME_WINDOW_MS)
+          : windowMs))
       .sort((left, right) => right.updatedAt - left.updatedAt)
       .slice(0, maxScan)
 
-    let resumed = 0
+    const mains: {
+      summary: ResumeSummary
+      interruption: Interruption
+      lastSeq: number
+    }[] = []
+    const orphans: SubagentOrphan[] = []
     for (const summary of candidates) {
-      if (resumed >= maxSessions) {
-        decisions.push({ sessionId: summary.sessionId, action: 'skipped', reason: 'session-cap' })
-        continue
-      }
-
       let events: readonly ResumeEvent[]
       try {
         events = await this.readEvents(summary.sessionId)
@@ -210,8 +258,114 @@ export class InterruptedTurnResumer {
       }
       const interruption = interruptionOf(events)
       if (interruption === undefined) continue
-
       const lastSeq = events.at(-1)?.seq ?? 0
+
+      if (summary.origin === 'subagent') {
+        const descriptor = continuableSubagent(events)
+        const parentSessionId = summary.parentSessionId ?? parentOf(events)
+        if (descriptor === undefined || parentSessionId === undefined) {
+          decisions.push({ sessionId: summary.sessionId, action: 'skipped', reason: 'not-resumable-subagent' })
+          continue
+        }
+        orphans.push({
+          parentSessionId,
+          childSessionId: summary.sessionId,
+          label: descriptor.label,
+          lastSeq,
+        })
+        continue
+      }
+
+      mains.push({ summary, interruption, lastSeq })
+    }
+
+    // A continuable child can only deliver its result while its direct parent
+    // is live. Wake the parent once per group and let it resume each child
+    // through the supported send_message/cold-resume path, rather than starting
+    // standalone child turns whose results would never reach the parent.
+    let resumed = 0
+    const recoveryParents = new Set<string>()
+    const groups = new Map<string, SubagentOrphan[]>()
+    for (const orphan of orphans) {
+      const group = groups.get(orphan.parentSessionId) ?? []
+      group.push(orphan)
+      groups.set(orphan.parentSessionId, group)
+    }
+    for (const [parentSessionId, group] of groups) {
+      if (resumed >= maxSessions) {
+        decisions.push({ sessionId: parentSessionId, action: 'skipped', reason: 'session-cap' })
+        continue
+      }
+      const parent = items.find(item => item.sessionId === parentSessionId)
+      if (parent === undefined || parent.blank === true) {
+        decisions.push({ sessionId: parentSessionId, action: 'skipped', reason: 'parent-missing' })
+        continue
+      }
+      if (parent.origin === 'subagent') {
+        decisions.push({ sessionId: parentSessionId, action: 'skipped', reason: 'nested-parent' })
+        continue
+      }
+
+      const ledger = await this.store.read()
+      const fresh = group.filter(child => ledger.sessions[child.childSessionId]?.seq !== child.lastSeq)
+      if (fresh.length === 0) {
+        decisions.push({ sessionId: parentSessionId, action: 'skipped', reason: 'already-resumed' })
+        continue
+      }
+      const allowed = fresh.filter(child => {
+        const entry = ledger.sessions[child.childSessionId]
+        const recent = entry !== undefined && now - entry.lastAt < cooldownMs
+        return (recent ? entry.attempts : 0) < maxAttempts
+      })
+      if (allowed.length === 0) {
+        decisions.push({ sessionId: parentSessionId, action: 'skipped', reason: 'attempt-cap' })
+        continue
+      }
+
+      await this.store.update(current => {
+        const sessions = { ...current.sessions }
+        for (const child of allowed) {
+          const entry = sessions[child.childSessionId]
+          const recent = entry !== undefined && now - entry.lastAt < cooldownMs
+          sessions[child.childSessionId] = {
+            seq: child.lastSeq,
+            attempts: (recent ? entry.attempts : 0) + 1,
+            lastAt: now,
+          }
+        }
+        return { version: 1, sessions }
+      })
+
+      try {
+        await this.deps.controller.prompt({
+          requestId: `totem-subagent-recovery:${parentSessionId}:${allowed
+            .map(child => child.childSessionId)
+            .sort()
+            .join(',')}`,
+          sessionId: parentSessionId,
+          mode: 'queue',
+          content: [{ type: 'text', text: subagentRecoveryPrompt(allowed) }],
+        }, AbortSignal.timeout(60_000))
+        recoveryParents.add(parentSessionId)
+        resumed += 1
+        decisions.push({ sessionId: parentSessionId, action: 'resumed', reason: `subagents:${allowed.length}` })
+      } catch (error) {
+        decisions.push({ sessionId: parentSessionId, action: 'skipped', reason: `prompt-failed: ${message(error)}` })
+      }
+    }
+
+    for (const { summary, interruption, lastSeq } of mains) {
+      if (recoveryParents.has(summary.sessionId)) {
+        // The subagent-recovery prompt already wakes this parent; a second
+        // continuation message would queue two turns for the same restart.
+        decisions.push({ sessionId: summary.sessionId, action: 'skipped', reason: 'covered-by-subagent-recovery' })
+        continue
+      }
+      if (resumed >= maxSessions) {
+        decisions.push({ sessionId: summary.sessionId, action: 'skipped', reason: 'session-cap' })
+        continue
+      }
+
       const ledger = await this.store.read()
       const entry = ledger.sessions[summary.sessionId]
       if (entry?.seq === lastSeq) {

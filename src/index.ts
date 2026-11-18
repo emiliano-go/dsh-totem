@@ -133,7 +133,7 @@ export interface Config {
   restartService: Volatile<string>
   /** Local quiet window for silent reminders, e.g. "22:00-08:00"; empty disables it. */
   quietHours: Volatile<string>
-  /** Continue turns that a Host restart cut in half. */
+  /** Continue turns and resume interrupted continuable subagents after a Host restart. */
   resumeInterrupted: Volatile<boolean>
   /** Only Sessions active within this many minutes are considered. */
   resumeWindowMinutes: number
