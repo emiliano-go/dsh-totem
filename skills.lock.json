@@ -5,5 +5,6 @@
   { "name": "impeccable", "repo": "pbakaus/impeccable", "path": ".dsh/skills/impeccable" },
   { "name": "humanizer", "repo": "blader/humanizer", "path": "." },
   { "name": "logo-design", "repo": "kaankiziltug/logo-design-skill", "path": "skills/logo-design" },
-  { "name": "diagram-design", "repo": "cathrynlavery/diagram-design", "path": "skills/diagram-design" }
+  { "name": "diagram-design", "repo": "cathrynlavery/diagram-design", "path": "skills/diagram-design" },
+  { "name": "unslop", "repo": "heydamir/unslop", "path": "skills/unslop" }
 ]

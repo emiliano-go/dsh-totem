@@ -19,7 +19,7 @@ test('the lock file declares the expected external skills', () => {
   const names = lock.map(skill => skill.name).sort()
   expect(names).toEqual([
     'diagram-design', 'hallmark', 'humanizer', 'impeccable',
-    'last30days', 'logo-design', 'taste-skill',
+    'last30days', 'logo-design', 'taste-skill', 'unslop',
   ])
   // impeccable ships a DSH-specific variant; pin it instead of the Claude one.
   expect(lock.find(skill => skill.name === 'impeccable')?.path).toBe('.dsh/skills/impeccable')

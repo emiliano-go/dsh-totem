@@ -444,9 +444,13 @@ the installer keeps one **shallow, sparse** checkout per repository under
 materialized (143 MB). Adding a skill is one line in the lock file; updates are
 `git pull --ff-only` on the next `bun run skills:install`. Current set:
 `taste-skill` (design-taste-frontend), `hallmark`, `last30days`, `impeccable`,
-`humanizer`, `logo-design`, `diagram-design`. `bun run skills:install --check`
-prints the plan, and `--no-external` limits the run to this package's own
-skills.
+`humanizer`, `logo-design`, `diagram-design`, and `unslop` (CC BY 4.0,
+credited in its `SKILL.md`). The six upstream Ponytail skills
+(`ponytail`, `ponytail-audit`, `ponytail-debt`, `ponytail-gain`,
+`ponytail-help`, `ponytail-review`, MIT) are copied separately because one
+repository ships all six; they are not lock entries. `bun run
+skills:install --check` prints the plan, and `--no-external` limits the run to
+this package's own skills.
 
 ### Claude SEO
 
@@ -625,6 +629,35 @@ This edits the installed `@deepseek-ai/dsh-client-ui-workspace/lib/client.js`
 (the Workspace row is not a replaceable slot) and keeps a `.bak-totem` backup.
 The precedence matches the Session row: pending > running > done. Rerun it
 after every DSH upgrade or reinstall, then reload the app.
+
+## Home-screen app (PWA)
+
+DSH ships a manifest, maskable icons, and standalone display, but behind
+Cloudflare Access the manifest fetch did not carry the Access session cookie.
+Chrome therefore saw the login redirect instead of a manifest and "Add to Home
+screen" fell back to a browser shortcut.
+
+```sh
+bun run script/patch-pwa.ts
+```
+
+This adds `crossorigin="use-credentials"` to the installed frontend's manifest
+link, so the fetch carries the Access cookie, and pins `id`, `start_url` and
+`scope` to `/` with a dark splash theme. It also relaxes the DSH browser cookie
+from `SameSite=Strict` to `Lax`, because an OS-initiated standalone launch is a
+top-level navigation that can withhold Strict cookies. Rerun it after every DSH
+upgrade, restart DSH, then remove the old shortcut and install the app again.
+
+If the installed app still says "dsh web authentication required" after the
+restart, its cookie jar has no DSH session yet. Open the authenticated
+`https://dsh.emiliano-go.com/?token=...` URL once in the installed app (share or
+tap the link and choose the app); the token mints a persistent cookie in that
+jar. It is not needed again unless DSH's signing secret is reset.
+
+If launching the app later bounces through Access in the system browser, the
+Access session expired. Increase the application's session duration in
+Cloudflare Zero Trust; a Bypass policy for `manifest.webmanifest` and the icon
+files is the fallback if an install still cannot read them.
 
 ## Upgrade DSH
 
