@@ -16,8 +16,8 @@ tar xzf dsh-undo-0.2.0.tgz
 cd package
 patch -p1 < ../../patches/dsh-undo-0.2.2.patch
 npm pack
-dsh plugin --profile <profile> add ./dsh-undo-0.2.0-totem.1.tgz
+dsh plugin --profile <profile> add ./dsh-undo-0.2.0-totem.2.tgz
 ```
 
 The patched tarball installed here lives at
-`~/.dsh/vendor/dsh-undo-0.2.0-totem.1.tgz`.
+`~/.dsh/vendor/dsh-undo-0.2.0-totem.2.tgz`.

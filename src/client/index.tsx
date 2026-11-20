@@ -23,6 +23,7 @@ import { OverviewPage } from './OverviewPage.tsx'
 import { OverviewIcon } from './OverviewIcon.tsx'
 import { OverviewController } from './overview.ts'
 import { installEmojiShortcodes } from './emoji.ts'
+import { installEmojiAutocomplete } from './emoji-autocomplete.ts'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 /** Required browser services. */
@@ -173,4 +174,5 @@ export function apply(ctx: ClientContext): void {
   )), 'dsh-totem: settings page')
 
   ctx.effect(() => installEmojiShortcodes(), 'dsh-totem: emoji shortcodes')
+  ctx.effect(() => installEmojiAutocomplete(), 'dsh-totem: emoji autocomplete')
 }

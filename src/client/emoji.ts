@@ -11,7 +11,7 @@
 import { get } from 'node-emoji'
 
 /** Shortcodes whose names differ from the Unicode/GitHub canonical alias. */
-const ALIASES: Record<string, string> = {
+export const EMOJI_ALIASES: Record<string, string> = {
   wilted_rose: 'wilted_flower',
 }
 
@@ -21,7 +21,7 @@ const SHORTCODE = /:([a-z0-9_+-]+):/gi
 export function replaceShortcodes(text: string): string {
   return text.replace(SHORTCODE, (match, name: string) => {
     const key = name.toLowerCase()
-    const emoji = get(ALIASES[key] ?? key)
+    const emoji = get(EMOJI_ALIASES[key] ?? key)
     return emoji ?? match
   })
 }
