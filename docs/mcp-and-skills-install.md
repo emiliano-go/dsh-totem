@@ -21,7 +21,7 @@ and `mcp__trivy__trivy_version` / `scan_filesystem` all succeeded.
 | shadcn MCP | `npx -y shadcn@latest mcp` | 7 tools; `get_project_registries` responded | working (project needs `components.json`) |
 | Trivy MCP | `trivy` 0.76.2 + `trivy plugin install mcp` (0.0.20) | 6 tools; `trivy fs --scanners vuln` exited 0 | working |
 | Postgres MCP Pro | `docker pull crystaldba/postgres-mcp` | 9 tools; `list_schemas` returned the schemas of a test Postgres | working (needs `DATABASE_URI`) |
-| Semgrep | `uv tool install semgrep` → 1.186.0 | CLI scan exited 0; `semgrep mcp` lists 7 tools | **MCP disabled**: tool calls need Semgrep Pro |
+| Semgrep | `uv tool install semgrep` → 1.186.0 | CLI scan detected a custom `os.system(...)` rule; `semgrep mcp` lists 7 tools | **MCP disabled**: tool calls need Semgrep Pro |
 | frontend-design skill | copied from `anthropics/skills` | appears in the live skill catalog | installed |
 | Superpowers | 15 skills from `obra/superpowers` | all 15 appear in the live skill catalog | installed |
 
@@ -65,8 +65,10 @@ needs a real `DATABASE_URI` before it should be enabled.
 - `mcp-semgrep` — `disabled: true` until Pro
 
 Disabled templates: `mcp-sentry`, `mcp-postgres`, `mcp-figma`, `mcp-supabase`,
-`mcp-neon`. Remove `disabled: true` after authenticating (and set
-`DATABASE_URI` for Postgres).
+`mcp-neon`, `mcp-burp`. Remove `disabled: true` after authenticating (and set
+`DATABASE_URI` for Postgres, and the Burp proxy jar path). This accounts for
+every executable recommendation in the research report; OWASP MCP Top 10 is a
+checklist, not a server.
 
 All use `failOnStartupError: false` so a missing optional dependency does not
 stop DSH from booting. The config was validated with:
