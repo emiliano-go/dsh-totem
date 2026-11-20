@@ -93,24 +93,30 @@ export function researchSlug(question: string): string {
  * recursive citation following, verification, and a cited report.
  */
 export function researchPrompt(question: string, date = new Date().toISOString().slice(0, 10)): string {
-  const path = `research/${researchSlug(question)}-${date}.md`
+  const dir = `research/${researchSlug(question)}`
+  const path = `${dir}/report.md`
   return [
-    'Run a deep research task. Answer with evidence, not the first plausible page.',
+    'Run a deep research task with explicit stages. Answer with evidence, not the first plausible page.',
     '',
     `Question: ${question}`,
+    `Retrieval date: ${date}.`,
     '',
-    'If `deep-research` is in the skill catalog, load it first; it is the full protocol. Otherwise follow these steps:',
-    '1. Frame: restate the question, list 3-6 subquestions, and state what evidence would settle each.',
-    '2. Fan out: write 3-4 genuinely different queries per subquestion (canonical, exact phrase, site:primary-source, contrarian). Issue them in parallel in one turn.',
-    '3. Triage: prefer primary sources (specs, docs, repos, papers, filings) over SEO articles; drop syndicated duplicates.',
-    '4. Read: use mcp__searxncrawl__crawl for pages, crawl_site for docs sites, and mcp__cluefinch__web_fetch/web_links for chunked long documents and citation navigation. Never cite a snippet.',
-    '5. Recurse: follow cited primary sources up to depth 2; use mcp__cluefinch__web_links to choose links.',
-    '6. Gap loop: re-search missing or contradictory claims with new wording; report unresolved contradictions instead of hiding them.',
-    '7. Verify: each load-bearing claim needs one primary source or two independent secondary sources; record retrieval dates.',
-    '8. Report: answer first, then an evidence table with inline [S#] citations, a full source table (title, URL, type, date), and an explicit contradictions/gaps section. Distinguish fact, inference, and unverified.',
+    'Load the `deep-research` skill first when available; it carries the full staged protocol. Create the run before searching (the skill script path is in the skill base directory):',
+    `  bun <skill-dir>/scripts/research.ts init --question "${question.replaceAll('"', '\\"')}" --subquestion "..." --subquestion "..." --subquestion "..."`,
     '',
-    'Default budget: 20 searches, 12 distinct pages read in full, recursion depth 2. State it if you exceed it.',
+    'Then work the stages in order, recording the gate and advancing after each:',
+    '1. brief — question, 3-6 subquestions, evidence type, scope, budget.',
+    '2. landscape — taxonomy, disputed terms, actors, timeline, 3 competing narratives; 10-15 broad queries.',
+    '3. plan — threads, hypotheses, evidence matrix, primary targets, 3-4 queries per thread.',
+    '4. depth — read primary sources in full; use mcp__searxncrawl__crawl, crawl_site, and mcp__cluefinch__web_fetch/web_links; record sources and claims with exact quotes; follow citations to depth 2.',
+    '5. midpoint — coverage matrix (supported/contradicted/missing); decide continue, refocus, or stop.',
+    '6. edges — contrarian and failure queries, boundary conditions, alternative explanations, recency and coverage.',
+    '7. verify — run `check`; every load-bearing claim needs one primary source or two independent secondaries plus a quote.',
+    '8. report — generate the skeleton, fill it, run `check --strict`; answer first, evidence table, inline [S#], sources, gaps, method. Write it to the path below and answer inline.',
+    '',
+    'Default budget: 25 searches, 15 distinct pages read in full, 45 minutes, recursion depth 2. State it if you exceed it.',
     `Write the report to \`${path}\` in the session cwd and also answer inline.`,
+    `Resume from \`${dir}/state.json\` if the session was compacted or restarted; never restart the research from scratch.`,
   ].join('\n')
 }
 

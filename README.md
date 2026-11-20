@@ -26,7 +26,7 @@ A workflow prompt section and a first-step recent-memory digest are also mounted
    pile of search servers: SearXNG-backed discovery and extraction
    (`searxncrawl`), chunked reading and citation navigation (`cluefinch`),
    deterministic browser control (`playwright`), and agentic browsing
-   (`browser-use`). The `deep-research` skill and `/research` command encode
+   (`browser-use`). The staged `deep-research` skill and `/research` command encode
    the investigation protocol.
 
 ## Requirements
@@ -256,7 +256,7 @@ exceptions, because the evidence work needs a real agent turn.
 | `/memory` | Active/archived counts, open conflicts, and stale evidence. |
 | `/handoff <summary>` | Store a session handoff before the context is compacted. |
 | `/triage [12h\|7d\|30\|YYYY-MM-DD\|all] [--limit N]` | Queue a model turn that triages untriaged TrustSight watcher alerts and records each one in `alert-triage/ledger.jsonl`. |
-| `/research <question>` | Queue a model turn that runs the deep-research protocol and writes a cited report to `research/<slug>-<date>.md`. |
+| `/research <question>` | Queue a model turn that runs the staged deep-research protocol and writes a cited report to `research/<slug>/report.md`. |
 
 ### TrustSight triage
 
@@ -359,14 +359,24 @@ enables both. A public instance should re-enable the limiter.
 
 ### The protocol
 
-`/research <question>` steers one agent turn through the pipeline: decompose
-the question, fan out 3–4 query variants per subquestion in parallel, prefer
-primary sources, read whole pages, follow cited sources to depth 2, re-search
-gaps and contradictions, verify load-bearing claims against independent
-sources, and write a report with inline `[S#]` citations and a full source
-table. The full version is the portable `deep-research` skill under
-`.agents/skills/`; copy that directory to `~/.agents/skills` to use it in every
-project.
+`/research <question>` steers one agent turn through nine gated stages: brief,
+landscape, plan, depth, midpoint, edges, verify, report, and red team. The
+portable `deep-research` skill owns the state machine:
+
+- `scripts/research.ts init` writes `research/<slug>/state.json` with the
+  question, subquestions, budget, and gate records.
+- `source add`, `claim add`, and `gap add/close` build a deterministic ledger;
+  a high-confidence claim needs a primary source, or two independent
+  secondaries, plus an exact quote.
+- `gate pass` + `advance` enforce the stage order; `check` blocks the report
+  while earlier gates, open gaps, or unverified claims remain.
+- `report` generates the evidence/source skeleton, and `check --strict`
+  verifies the required sections and that every claim is cited.
+
+The state file is the resume point after a compaction or restart: read
+`status`, continue from the recorded stage, and never re-run completed
+searches. The full skill lives under `.agents/skills/deep-research`; copy that
+directory to `~/.agents/skills` to use it in every project.
 
 ### Security
 
