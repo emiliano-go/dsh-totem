@@ -103,6 +103,8 @@ export interface Config {
   toolGate: Volatile<boolean>
   /** Tool-memory association cache lifetime in milliseconds. */
   toolGateTtlMs: number
+  /** Turns a tool-memory read stays fresh before re-blocking. */
+  toolGateTurns: number
   /** Bearer token for the assistant HTTP routes. */
   apiToken: Volatile<string>
   /** ntfy base URL. */
@@ -182,6 +184,7 @@ export const Config: z<Config> = z.object({
   distillTurnMinChars: z.number().step(1).min(0).default(200).volatile(),
   toolGate: z.boolean().default(true).volatile(),
   toolGateTtlMs: z.number().step(1).min(1000).default(30000),
+  toolGateTurns: z.number().step(1).min(1).default(3),
   coverage: z.boolean().default(true).volatile(),
   clues: z.boolean().default(false).volatile(),
   apiToken: z.string().default('').volatile(),
@@ -256,6 +259,7 @@ export function resolveConfig(config: Config): TotemConfig {
     distillTurnMinChars: config.distillTurnMinChars,
     toolGate: config.toolGate,
     toolGateTtlMs: config.toolGateTtlMs,
+    toolGateTurns: config.toolGateTurns,
     coverage: config.coverage,
     clues: config.clues,
     watchAllowPrivate: config.watchAllowPrivate,
@@ -360,6 +364,7 @@ export function apply(ctx: Context, config: Config): void {
   registerToolMemoryGate(ctx, totem, {
     enabled: () => totem.config.toolGate.get(),
     ttlMs: totem.config.toolGateTtlMs,
+    turns: totem.config.toolGateTurns,
   })
   registerUserTools(ctx, totem)
   registerNotifyTool(ctx, totem)

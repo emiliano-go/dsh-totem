@@ -82,12 +82,27 @@ describe('tool memory gate', () => {
 
   test('memory_for_tool reads and acknowledges the association', async () => {
     const { ctx, tools, pre } = harness()
-    registerToolMemoryGate(ctx, fakeTotem())
+    const gate = registerToolMemoryGate(ctx, fakeTotem())
     const reader = tools.find(tool => tool.name === 'memory_for_tool')
     expect(reader).toBeDefined()
+    gate.beginTurn({ session: { id: 's1' } }, 1)
     const result = await reader!.execute({ tool: 'write' }, { agent: { session: { id: 's1' } }, signal: new AbortController().signal }) as { count: number }
     expect(result.count).toBe(2)
     expect(await pre(exec('write'), async () => ({ kind: 'allow' }))).toEqual({ kind: 'allow' })
+  })
+
+  test('re-arms after three turns', async () => {
+    const { ctx, tools, pre } = harness()
+    const gate = registerToolMemoryGate(ctx, fakeTotem(), { turns: 3 })
+    gate.beginTurn({ session: { id: 's1' } }, 1)
+    await tools.find(tool => tool.name === 'memory_for_tool')!.execute(
+      { tool: 'write' },
+      { agent: { session: { id: 's1' } }, signal: new AbortController().signal },
+    )
+    gate.beginTurn({ session: { id: 's1' } }, 3)
+    expect(await pre(exec('write'), async () => ({ kind: 'allow' }))).toEqual({ kind: 'allow' })
+    gate.beginTurn({ session: { id: 's1' } }, 4)
+    expect(await pre(exec('write'), async () => ({ kind: 'allow' }))).toMatchObject({ kind: 'deny' })
   })
 
   test('memory tools and the reader are exempt even when memories exist', async () => {

@@ -30,6 +30,8 @@ export interface ToolMemoryGateOptions {
   enabled?: () => boolean
   /** Association cache lifetime in milliseconds. */
   ttlMs?: number
+  /** Number of turns a read stays fresh before the tool is blocked again. */
+  turns?: number
   /** Injectable clock for tests. */
   now?: () => number
 }
@@ -40,6 +42,7 @@ interface CacheEntry {
 }
 
 const DEFAULT_TTL_MS = 30_000
+const DEFAULT_FRESH_TURNS = 3
 const MEMORY_TOOL = /^memory_/u
 const MEMORY_LIMIT = 50
 
@@ -103,14 +106,17 @@ export function blockReason(tool: string, memories: ToolMemory[]): string {
 /** Per-session association cache and read ledger. */
 export class ToolMemoryGate {
   private readonly cache = new Map<string, CacheEntry>()
-  private readonly read = new Map<string, Set<string>>()
+  private readonly read = new Map<string, Map<string, number>>()
+  private readonly turns = new Map<string, number>()
   private readonly enabled: () => boolean
   private readonly ttlMs: number
+  private readonly freshTurns: number
   private readonly now: () => number
 
   constructor(private readonly totem: TotemService, options: ToolMemoryGateOptions = {}) {
     this.enabled = options.enabled ?? (() => true)
     this.ttlMs = Math.max(1, options.ttlMs ?? DEFAULT_TTL_MS)
+    this.freshTurns = Math.max(1, Math.trunc(options.turns ?? DEFAULT_FRESH_TURNS))
     this.now = options.now ?? Date.now
   }
 
@@ -124,16 +130,33 @@ export class ToolMemoryGate {
     }
   }
 
+  /** Record the session's current turn from a `turn/start` event. */
+  beginTurn(agent: unknown, turn: number): void {
+    const session = sessionKey(agent)
+    if (session === undefined || !Number.isFinite(turn)) return
+    this.turns.set(session, Math.trunc(turn))
+  }
+
+  /** Forget all state for a disposed session. */
+  forget(agent: unknown): void {
+    const session = sessionKey(agent)
+    if (session === undefined) return
+    this.turns.delete(session)
+    this.read.delete(session)
+    this.invalidate(session)
+  }
+
   /** Mark memories as read for one session. */
   acknowledge(agent: unknown, ids: readonly string[]): void {
     const session = sessionKey(agent)
     if (session === undefined || ids.length === 0) return
     let seen = this.read.get(session)
     if (seen === undefined) {
-      seen = new Set()
+      seen = new Map()
       this.read.set(session, seen)
     }
-    for (const id of ids) seen.add(id)
+    const turn = this.turns.get(session) ?? 0
+    for (const id of ids) seen.set(id, turn)
   }
 
   /** Memories associated with a tool via `tool:<name>` or `tool:*`. */
@@ -171,7 +194,11 @@ export class ToolMemoryGate {
     if (session === undefined) return []
     const seen = this.read.get(session)
     if (seen === undefined) return memories
-    return memories.filter(memory => !seen.has(memory.id))
+    const turn = this.turns.get(session) ?? 0
+    return memories.filter(memory => {
+      const readAt = seen.get(memory.id)
+      return readAt === undefined || turn - readAt >= this.freshTurns
+    })
   }
 }
 
@@ -195,6 +222,15 @@ export function registerToolMemoryGate(
   // A memory write can change the associations; drop the cache for that
   // session so the next tool call sees the new tags immediately.
   ctx.on('session/event', (session, event) => {
+    if (event.type === 'turn/start') {
+      const turn = (event.data as { turn?: unknown }).turn
+      if (typeof turn === 'number') gate.beginTurn(session, turn)
+      return
+    }
+    if (event.type === 'session/disposed') {
+      gate.forget(session)
+      return
+    }
     if (event.type !== 'tool/call') return
     const data = event.data as { name?: unknown }
     if (typeof data.name !== 'string') return

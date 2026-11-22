@@ -25,7 +25,9 @@ memory_for_tool {"tool":"write"}
 \`\`\`
 
 Use this for gotchas that must be known before a tool runs, not merely as
-searchable trivia. A \`tool:*\` tag associates a memory with every tool.
+searchable trivia. A \`tool:*\` tag associates a memory with every tool. A read
+stays fresh for three turns, then the tool blocks again so the memory stays in
+view.
 
 ## Automatic registration
 
