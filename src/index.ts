@@ -14,6 +14,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import z from '@deepseek-ai/schemastery'
 import { TotemService, type TotemConfig } from './service.ts'
 import { registerMemoryTools } from './tools.ts'
+import { registerToolMemoryGate } from './tool-memory-gate.ts'
 import { registerUserTools, userContext } from './user.ts'
 import { CandidateService } from './candidates.ts'
 import { clueSeeds, generateClues } from './clues.ts'
@@ -35,6 +36,7 @@ import { registerRecallTool } from './recall.ts'
 import { ConflictInbox } from './conflicts.ts'
 import { VerifyLane, VerifyStore } from './verify-lane.ts'
 import { RestartController } from './restart.ts'
+import { registerDesignProxy } from './design-proxy.ts'
 import { budgetFor, clipToTokens } from './budget.ts'
 
 declare module '@deepseek-ai/dsh-llm' {
@@ -97,6 +99,10 @@ export interface Config {
   distillTurn: Volatile<boolean>
   /** Minimum assistant text length for turn distillation. */
   distillTurnMinChars: Volatile<number>
+  /** Block a tool until memories associated with it were read this session. */
+  toolGate: Volatile<boolean>
+  /** Tool-memory association cache lifetime in milliseconds. */
+  toolGateTtlMs: number
   /** Bearer token for the assistant HTTP routes. */
   apiToken: Volatile<string>
   /** ntfy base URL. */
@@ -143,6 +149,10 @@ export interface Config {
   resumeMaxAttempts: number
   /** Cooldown over which resume attempts are counted. */
   resumeCooldownMinutes: number
+  /** Proxy the claude-design editor under the DSH origin so remote devices can reach it. */
+  designProxy: boolean
+  /** Loopback port of the claude-design editor. */
+  designEditorPort: number
 }
 
 /** Loader schema; every field is live so the Plugins page can edit it. */
@@ -170,6 +180,8 @@ export const Config: z<Config> = z.object({
   userContext: z.boolean().default(true),
   distillTurn: z.boolean().default(true).volatile(),
   distillTurnMinChars: z.number().step(1).min(0).default(200).volatile(),
+  toolGate: z.boolean().default(true).volatile(),
+  toolGateTtlMs: z.number().step(1).min(1000).default(30000),
   coverage: z.boolean().default(true).volatile(),
   clues: z.boolean().default(false).volatile(),
   apiToken: z.string().default('').volatile(),
@@ -195,6 +207,8 @@ export const Config: z<Config> = z.object({
   resumeMaxSessions: z.number().step(1).min(1).default(3),
   resumeMaxAttempts: z.number().step(1).min(1).default(3),
   resumeCooldownMinutes: z.number().step(1).min(1).default(30),
+  designProxy: z.boolean().default(true),
+  designEditorPort: z.number().step(1).min(1).default(4720),
 })
 
 export function resolveConfig(config: Config): TotemConfig {
@@ -240,6 +254,8 @@ export function resolveConfig(config: Config): TotemConfig {
     quietHours: config.quietHours,
     distillTurn: config.distillTurn,
     distillTurnMinChars: config.distillTurnMinChars,
+    toolGate: config.toolGate,
+    toolGateTtlMs: config.toolGateTtlMs,
     coverage: config.coverage,
     clues: config.clues,
     watchAllowPrivate: config.watchAllowPrivate,
@@ -341,6 +357,10 @@ export function apply(ctx: Context, config: Config): void {
   })
 
   registerMemoryTools(ctx, totem, { conflicts })
+  registerToolMemoryGate(ctx, totem, {
+    enabled: () => totem.config.toolGate.get(),
+    ttlMs: totem.config.toolGateTtlMs,
+  })
   registerUserTools(ctx, totem)
   registerNotifyTool(ctx, totem)
   registerNotificationHooks(ctx, totem)
@@ -393,6 +413,7 @@ export function apply(ctx: Context, config: Config): void {
     conflicts,
     restart: restarter,
   })
+  if (config.designProxy) registerDesignProxy(ctx, { port: config.designEditorPort })
   registerInterruptedTurnResume(ctx, {
     enabled: config.resumeInterrupted,
     windowMinutes: config.resumeWindowMinutes,

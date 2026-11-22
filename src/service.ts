@@ -472,6 +472,9 @@ export class TotemService extends Service {
   async createMemory(args: Record<string, unknown>, signal?: AbortSignal, agent?: unknown): Promise<unknown> {
     const target = this.target()
     const statement = typeof args.statement === 'string' ? args.statement : ''
+    const tools = tagList(args.tools)
+    const { tools: _tools, ...payload } = args
+    const baseTags = tagList(args.tags)
     const titled = await (target === undefined || statement.length === 0
       ? undefined
       : distillAuthored(this.ctx, target, {
@@ -479,15 +482,16 @@ export class TotemService extends Service {
         title: typeof args.title === 'string' ? args.title : '',
         statement,
         details: typeof args.details === 'string' ? args.details : undefined,
-        tags: Array.isArray(args.tags) ? args.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+        tags: baseTags,
       }, signal, (agent as { id?: string } | undefined)?.id))
     const project = await this.projectFor(agent, signal)
+    const tags = tagsWithTools([...baseTags, ...tagList(titled?.tags)], tools)
     return this.call('memory_create_tool', withoutUndefined({
-      ...args,
+      ...payload,
       title: titled?.title ?? args.title,
       statement: titled?.statement ?? args.statement,
       details: titled?.details ?? args.details,
-      tags: titled?.tags ?? args.tags,
+      ...tags.length === 0 ? {} : { tags },
       project,
     }), signal)
   }
@@ -506,11 +510,45 @@ export class TotemService extends Service {
         tags: [],
       }, signal, (agent as { id?: string } | undefined)?.id))
     const project = await this.projectFor(agent, signal)
+    const tools = tagList(args.tools)
+    let next = args
+    if (tools.length > 0) {
+      let current = tagList(args.tags)
+      if (current.length === 0 && typeof args.id === 'string') {
+        try {
+          current = tagsOf(await this.call('memory_get_tool', { id: args.id, project }, signal)) ?? []
+        } catch {
+          // Keep the update usable even if the read fails; tools are an add-on.
+        }
+      }
+      const tags = tagsWithTools(current, tools)
+      next = { ...args, ...tags.length === 0 ? {} : { tags } }
+    }
+    const { tools: _tools, ...payload } = next
     return this.call('memory_update_tool', withoutUndefined({
-      ...args,
+      ...payload,
       statement: titled?.statement ?? args.statement,
       details: titled?.details ?? args.details,
       project,
     }), signal)
   }
+}
+
+function tagList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((tag): tag is string => typeof tag === 'string' && tag.length > 0) : []
+}
+
+/** Merge `tool:<name>` tags into a tag list, de-duplicated. */
+export function tagsWithTools(base: readonly string[], tools: readonly string[]): string[] {
+  const tags = new Set<string>()
+  for (const tag of base) tags.add(tag)
+  for (const tool of tools) tags.add(`tool:${tool}`)
+  return [...tags]
+}
+
+function tagsOf(value: unknown): string[] | undefined {
+  const record = value as { tags?: unknown; memory?: { tags?: unknown } } | undefined
+  if (Array.isArray(record?.tags)) return tagList(record.tags)
+  if (Array.isArray(record?.memory?.tags)) return tagList(record.memory.tags)
+  return undefined
 }

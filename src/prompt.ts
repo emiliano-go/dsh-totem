@@ -11,6 +11,21 @@ This project has a persistent memory store (Totem, \`.totem/totem.db\`) that sur
 - \`memory_update\` / \`memory_delete\` / \`memory_relate\` — maintain the store and link related items.
 - \`memory_verify\` — stamp a memory as verified after you check it.
 - \`engineering_context\` — assemble ranked context for a task and tags.
+- \`memory_for_tool\` — read memories associated with a tool before calling it.
+
+## Tool-associated memories
+
+\`memory_create\` and \`memory_update\` accept \`tools: ["write", "edit", ...]\`.
+They are stored as \`tool:<name>\` tags, and dsh-totem blocks that tool until the
+associated memories are read in the session. The block message tells you the
+exact call:
+
+\`\`\`
+memory_for_tool {"tool":"write"}
+\`\`\`
+
+Use this for gotchas that must be known before a tool runs, not merely as
+searchable trivia. A \`tool:*\` tag associates a memory with every tool.
 
 ## Automatic registration
 
