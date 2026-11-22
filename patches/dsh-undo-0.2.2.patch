@@ -43,7 +43,7 @@
 -    });
 -    return session.append('assistant/message', {
 +    const step = currentStep(session.snapshotEvents());
-+    const message = createDeveloperMessage({ content: [] });
++    const message = createDeveloperMessage({ content: [], source: { kind: 'dsh-undo' } });
 +    return session.append('developer/message', {
          turn: step?.turn ?? 0,
          step: step?.step ?? 0,
