@@ -8,6 +8,7 @@ This bundle does seven things:
 2. **Memory-gated file tools.** A fork of `@deepseek-ai/dsh-tool-fs`: `read`, `write`, `edit`, and `apply_patch` require a `memory` argument (`{ kind: "register", symbol?: "<name>" }`). After each successful touch the service registers the file (and each changed symbol, for writes) in Totem.
 3. **Secondary memory model.** Memory prose is authored by a separately configured model (or the deployment default when unset), selected in the Web GUI on the Plugins page (`provider`, `model`). If distillation fails, a deterministic draft is stored.
 4. **Tool-associated memories.** `memory_create` / `memory_update` accept `tools: ["write", "edit", ...]`, stored as `tool:<name>` tags. A `tools/pre-execute` gate denies that tool while any associated memory is unread and tells the agent to call `memory_for_tool`; after the read, the retry proceeds. The read stays fresh for three turns, then the block re-arms. `tool:*` guards every tool. The gate is fail-open and skips memory tools.
+5. **Large-paste attachments.** The Web composer turns a plain-text paste above `pasteToFileChars` characters (default 4,000) or `pasteToFileLines` lines (default 80) into a `.txt` draft attachment and leaves a compact marker. `pasteToFile: false` disables it.
 
 A workflow prompt section and a first-step recent-memory digest are also mounted.
 

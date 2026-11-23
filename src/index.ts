@@ -95,6 +95,12 @@ export interface Config {
   debug: boolean
   /** Inject the owner's global preferences at the first step. */
   userContext: boolean
+  /** Attach large composer pastes as text files instead of prompt text. */
+  pasteToFile: boolean
+  /** Character count that triggers paste attachment. */
+  pasteToFileChars: number
+  /** Line count that triggers paste attachment. */
+  pasteToFileLines: number
   /** Distill each completed turn into memory candidates. */
   distillTurn: Volatile<boolean>
   /** Minimum assistant text length for turn distillation. */
@@ -180,6 +186,9 @@ export const Config: z<Config> = z.object({
   timeoutMs: z.number().step(1).min(1000).default(15000),
   debug: z.boolean().default(false),
   userContext: z.boolean().default(true),
+  pasteToFile: z.boolean().default(true),
+  pasteToFileChars: z.number().step(1).min(1).default(4000),
+  pasteToFileLines: z.number().step(1).min(1).default(80),
   distillTurn: z.boolean().default(true).volatile(),
   distillTurnMinChars: z.number().step(1).min(0).default(200).volatile(),
   toolGate: z.boolean().default(true).volatile(),

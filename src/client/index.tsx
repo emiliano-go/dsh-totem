@@ -24,6 +24,7 @@ import { OverviewIcon } from './OverviewIcon.tsx'
 import { OverviewController } from './overview.ts'
 import { installEmojiShortcodes } from './emoji.ts'
 import { installEmojiAutocomplete } from './emoji-autocomplete.ts'
+import { registerPasteToFile } from './PasteToFileDock.tsx'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 /** Required browser services. */
@@ -34,6 +35,7 @@ export const inject = ['slots', 'remote', 'remote.session', 'configForms']
  * @param ctx - the browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
+  registerPasteToFile(ctx)
   const card = new TotemMemoryCardController(ctx.configForms.get('totem'), ctx)
   ctx.effect(() => () => { card.dispose() }, 'dsh-totem: model card lifetime')
   const face = card.inject()
