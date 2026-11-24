@@ -1,18 +1,21 @@
 {
   "name": "dsh-totem",
   "version": "0.1.0",
-  "description": "Totem persistent engineering memory for DeepSeek Harness: native memory tools, required memory registration on file tools, and a secondary model for memory prose.",
+  "description": "Totem persistent engineering memory for DeepSeek Harness: native memory tools, memory-gated file tools, Totem-written native compaction with a searchable archive, and a secondary model for memory prose.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
     "./tool-fs": "./lib/tool-fs/index.js",
+    "./pipelines": "./lib/pipelines/index.js",
+    "./compaction": "./lib/compaction/index.js",
     "./package.json": "./package.json",
     "./client": "./lib/client.js"
   },
   "files": [
     "lib",
     "cordis.patch.yml",
+    "docs",
     "README.md",
     ".agents"
   ],
@@ -52,6 +55,7 @@
     "@deepseek-ai/schemastery": "*",
     "@deepseek-ai/dsh-agent": "*",
     "@deepseek-ai/dsh-attachment": "*",
+    "@deepseek-ai/dsh-compaction-basic": "*",
     "@deepseek-ai/dsh-fs": "*",
     "@deepseek-ai/dsh-fs-patch": "*",
     "@deepseek-ai/dsh-llm": "*",
@@ -76,6 +80,9 @@
       "optional": true
     },
     "@deepseek-ai/dsh-attachment": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-compaction-basic": {
       "optional": true
     },
     "@deepseek-ai/dsh-fs": {

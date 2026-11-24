@@ -15,7 +15,7 @@ import {
 
 const NOW = Date.UTC(2026, 10, 16, 16, 0, 0)
 
-function alert(slug: string, time: number, packages: string[] = ['pkg']) {
+function alert(slug: string, time: number, packages: string[] = ['pkg'], rules: string[] = ['C001']) {
   return {
     slug,
     time,
@@ -23,7 +23,7 @@ function alert(slug: string, time: number, packages: string[] = ['pkg']) {
     title: `TrustSight: ${packages.join(', ')} scored 20`,
     headline: `${packages.join(', ')} scored 20`,
     packages,
-    rules: ['C001'],
+    rules,
     counts: { alerts: 1, over_threshold: 1, ioc: 0, impersonation: 0 },
   }
 }
@@ -193,10 +193,15 @@ describe('triage preparation', () => {
       expect(result.prompt).toContain('MFP at HEAD')
       expect(result.prompt).toContain('analyze_diff')
       expect(result.prompt).toContain('fixed-at-head')
+      expect(result.prompt).toContain('Adversarial default')
+      expect(result.prompt).toContain('possible TPs first')
+      expect(result.prompt).toContain('what proves it is not')
+      expect(result.prompt).toContain('never downgrade an unexplained path to MFP')
 
       const files = await readFile(join(dir, 'README.md'), 'utf8')
       expect(files).toContain('ledger.jsonl')
       expect(files).toContain('head_checks')
+      expect(files).toContain('Possible TPs are analyzed first')
       const queuePath = /Queue: ([^\n]+)/u.exec(result.prompt)?.[1] ?? ''
       const queue = JSON.parse(await readFile(queuePath, 'utf8'))
       expect(queue.queued).toBe(1)
@@ -224,6 +229,31 @@ describe('triage preparation', () => {
         fetchImpl: fixedFetch([alert('2026-11-16/100000', 1_760_000_000)]),
       })
       expect(result.kind).toBe('empty')
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('queues a possible TP before an older low-signal alert', async () => {
+    const cwd = await workspace()
+    try {
+      const result = await prepareTriage({
+        cwd,
+        rawInput: '7d --limit 1',
+        options: { dir: '', feedUrl: 'https://watcher.test', windowDays: 7, batch: 1 },
+        now: NOW,
+        signal: new AbortController().signal,
+        fetchImpl: fixedFetch([
+          alert('2026-11-16/090000', 1_760_000_000, ['old-low'], ['G003']),
+          alert('2026-11-16/120000', 1_760_100_000, ['new-tp'], ['E002']),
+        ]),
+      })
+      if (result.kind !== 'prompt') throw new Error(`expected prompt, got ${result.kind}`)
+      const queuePath = /Queue: ([^\n]+)/u.exec(result.prompt)?.[1] ?? ''
+      const queue = JSON.parse(await readFile(queuePath, 'utf8'))
+      expect(queue.alerts).toHaveLength(1)
+      expect(queue.alerts[0].slug).toBe('2026-11-16/120000')
+      expect(queue.alerts[0].priority).toBe('review-first')
     } finally {
       await rm(cwd, { recursive: true, force: true })
     }

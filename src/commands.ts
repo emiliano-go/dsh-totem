@@ -313,6 +313,7 @@ export function registerTotemCommands(
             },
             now: Date.now(),
             signal,
+            refreshCore: true,
           })
           if (preparation.kind === 'error') return { kind: 'error', text: preparation.text }
           if (preparation.kind === 'empty') return { kind: 'success', text: preparation.text }

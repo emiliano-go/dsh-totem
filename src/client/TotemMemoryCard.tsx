@@ -42,11 +42,15 @@ export function TotemMemoryCard(props: TotemMemoryCardProps) {
   const state = props.useTotemMemoryCard(snapshot => snapshot)
   // The Plugins page renders this entry twice: a roster summary and the
   // selected detail page. Only the detail page owns the form.
-  if (props.view === 'summary') return <span>Choose the model that writes Totem memories.</span>
+  if (props.view === 'summary') return <span>Choose the models that write Totem memories and session titles.</span>
   const requested = parseRouteKey(state.requested)
   const storedUnavailable = state.requested !== '' && !state.dirty
     && !state.groups.some(group => group.id === requested.provider
       && group.models.some(model => model.id === requested.model))
+  const requestedTitle = parseRouteKey(state.requestedTitle)
+  const titleUnavailable = state.requestedTitle !== '' && !state.dirty
+    && !state.groups.some(group => group.id === requestedTitle.provider
+      && group.models.some(model => model.id === requestedTitle.model))
   return (
     <SettingsForm labels={LABELS} state={state} onSave={props.save} onDiscard={props.discard}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -81,6 +85,38 @@ export function TotemMemoryCard(props: TotemMemoryCardProps) {
         <p style={HELP_STYLE}>
           The model that writes Totem memories after file reads and edits. Leave the deployment
           default to reuse your main agent model, or pick any model from any configured provider.
+        </p>
+        <label htmlFor="dsh-totem-title-model" style={{ fontSize: 13, fontWeight: 600 }}>
+          Titles model
+        </label>
+        <select
+          id="dsh-totem-title-model"
+          style={SELECT_STYLE}
+          value={state.requestedTitle}
+          disabled={!state.writable || state.saving || state.catalogStatus === 'loading'}
+          onChange={event => { props.selectTitle(event.target.value) }}
+        >
+          <option value="">Same as memory model</option>
+          {state.groups.map(group => (
+            <optgroup key={group.id} label={group.name.length > 0 ? group.name : group.id}>
+              {group.models.map(model => (
+                <option key={routeKey(group.id, model.id)} value={routeKey(group.id, model.id)}>
+                  {model.name.length > 0 ? model.name : model.id}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+          {titleUnavailable
+            ? (
+              <option value={state.requestedTitle}>
+                {`${requestedTitle.provider} / ${requestedTitle.model} (unavailable)`}
+              </option>
+            )
+            : null}
+        </select>
+        <p style={HELP_STYLE}>
+          The model that writes session titles through the first five turns and the hover TLDR.
+          Leave it on the memory model to keep this auxiliary work on the same cheap route.
         </p>
         <label htmlFor="dsh-totem-embedding-backend" style={{ fontSize: 13, fontWeight: 600 }}>
           Retrieval encoder

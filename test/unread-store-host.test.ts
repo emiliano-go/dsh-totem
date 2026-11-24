@@ -47,6 +47,8 @@ describe('host unread store', () => {
     expect(await store1.list(1_000 + UNREAD_MAX_AGE_MS * 3)).toEqual([])
   })
 
+  // 510 sequential read-modify-write cycles; under a parallel full-suite run
+  // that exceeds bun's 5 s default, so the case gets its own budget.
   test('invalid ids are ignored and the document is capped', async () => {
     const store1 = store()
     await store1.mark('', 1_000)
@@ -59,5 +61,5 @@ describe('host unread store', () => {
     const items = await store1.list(1_000 + UNREAD_MAX_MARKS + 10)
     expect(items).toHaveLength(UNREAD_MAX_MARKS)
     expect(items[0].sessionId).toBe(`s${UNREAD_MAX_MARKS + 9}`)
-  })
+  }, 30_000)
 })

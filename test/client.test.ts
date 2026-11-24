@@ -162,7 +162,7 @@ test('summary view renders the description, detail view renders one form', async
 
   const summary = slot.component({ ...props, view: 'summary' })
   const summaryText = JSON.stringify(summary)
-  expect(summaryText).toContain('Choose the model that writes Totem memories.')
+  expect(summaryText).toContain('Choose the models that write Totem memories and session titles.')
   expect(summaryText).not.toContain('SettingsForm')
 
   const detail = slot.component({ ...props, view: 'detail' })

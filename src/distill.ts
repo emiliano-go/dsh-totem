@@ -14,6 +14,7 @@ import { BlockAssembler } from '@deepseek-ai/dsh-llm'
 declare module '@deepseek-ai/dsh-llm/types' {
   interface LlmRequestPurposeMap {
     'totem-memory': true
+    'totem-compact': true
   }
 }
 
@@ -269,6 +270,7 @@ export async function runOneShot(
   input: string,
   signal?: AbortSignal,
   sessionId?: string,
+  purpose: 'totem-memory' | 'totem-title' | 'totem-compact' = 'totem-memory',
 ): Promise<string | undefined> {
   const deadline = AbortSignal.timeout(target.timeoutMs)
   const combined = signal === undefined ? deadline : AbortSignal.any([signal, deadline])
@@ -280,7 +282,7 @@ export async function runOneShot(
       system,
       messages: [{ role: 'user' as const, content: [{ type: 'text' as const, text: input }] }],
       maxTokens: target.maxTokens,
-      purpose: 'totem-memory' as const,
+      purpose,
       ...sessionId === undefined ? {} : { sessionId },
       signal: combined,
     }

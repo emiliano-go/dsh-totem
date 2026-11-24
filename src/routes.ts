@@ -13,6 +13,7 @@ import type { OverviewService } from './overview.ts'
 import type { ConflictInbox } from './conflicts.ts'
 import type { RestartController } from './restart.ts'
 import type { UnreadStore } from './unread.ts'
+import type { TldrRecord } from './titles.ts'
 import { handleBrowserLogin, handleLoginCookie, handleLoginPage, loginQrFor, loginUrlFor } from './login.ts'
 
 const BODY_LIMIT = 1_000_000
@@ -36,6 +37,10 @@ interface AssistantDeps {
   verify: VerifyStore
   verifyLane: VerifyLane
   unread: UnreadStore
+  tldr: {
+    tldr: (sessionId: string) => Promise<TldrRecord | undefined>
+    ensure: (sessionId: string) => Promise<TldrRecord | undefined>
+  }
   restart: RestartController
 }
 
@@ -146,6 +151,15 @@ const routes = {
     if (path === '/totem/reminders') return { items: await deps.reminders.list(true) }
     if (path === '/totem/watches') return { items: await deps.watches.list(true) }
     if (path === '/totem/unread') return { items: await deps.unread.list() }
+    if (path === '/totem/tldr') {
+      const sessionId = url.searchParams.get('sessionId') ?? ''
+      const record = await deps.tldr.tldr(sessionId)
+      return {
+        sessionId,
+        tldr: record?.tldr ?? null,
+        updatedAt: record?.updatedAt ?? null,
+      }
+    }
     if (path === '/totem/overview') {
       await deps.overview.ensure()
       const source = url.searchParams.get('source') ?? 'all'
@@ -171,6 +185,14 @@ const routes = {
       }
     }
     if (path === '/totem/overview/import') { return deps.overview.importHistory() }
+    if (path === '/totem/tldr') {
+      const sessionId = bodyValue.sessionId
+      if (typeof sessionId !== 'string' || sessionId.length === 0) {
+        throw Object.assign(new Error('sessionId is required'), { status: 400 })
+      }
+      const record = await deps.tldr.ensure(sessionId)
+      return { sessionId, tldr: record?.tldr ?? null, updatedAt: record?.updatedAt ?? null }
+    }
     if (path === '/totem/unread') {
       const sessionId = bodyValue.sessionId
       return { items: await deps.unread.mark(sessionId) }

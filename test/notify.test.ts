@@ -19,12 +19,13 @@ function silent(): Record<string, unknown> {
   }
 }
 
-function hooks(config: Record<string, unknown>) {
+function hooks(config: Record<string, unknown>, services: Record<string, unknown> = {}) {
   const handlers = new Map<string, Handler[]>()
   const ctx = {
     on: (name: string, handler: Handler) => {
       handlers.set(name, [...handlers.get(name) ?? [], handler])
     },
+    get: (name: string) => services[name],
   }
   registerNotificationHooks(ctx as never, { config } as never)
   return {
@@ -76,6 +77,48 @@ test('subagent turns stay silent', () => {
   const hook = hooks({ ...silent(), ntfyTopic: ref('dsh-test'), notifyTurnEnd: ref(true) })
   hook.turnEnd({ agent: { parentAgent: {} }, turn: 9 })
   expect(calls).toEqual([])
+})
+
+test('a child Session stays silent even when the agent carries no parent link', () => {
+  const calls = countingFetch()
+  const hook = hooks({ ...silent(), ntfyTopic: ref('dsh-test'), notifyTurnEnd: ref(true) })
+  hook.turnEnd({
+    agent: { session: { id: 'child-1', header: { cwd: '/tmp/project', origin: 'subagent' } } },
+    turn: 2,
+  })
+  expect(calls).toEqual([])
+})
+
+test('delegation depth marks a resumed child as a subagent', () => {
+  const calls = countingFetch()
+  const hook = hooks({ ...silent(), ntfyTopic: ref('dsh-test'), notifyTurnEnd: ref(true) })
+  hook.turnEnd({
+    agent: { session: { id: 'child-2', header: { cwd: '/tmp/project', delegationDepth: 1 } } },
+    turn: 3,
+  })
+  expect(calls).toEqual([])
+})
+
+test('an agent outside the registry roots is a subagent', () => {
+  const calls = countingFetch()
+  const hook = hooks(
+    { ...silent(), ntfyTopic: ref('dsh-test'), notifyTurnEnd: ref(true) },
+    { agents: { roots: () => [] } },
+  )
+  hook.turnEnd({ agent: { session: { id: 'child-3', header: { cwd: '/tmp/project' } } }, turn: 5 })
+  expect(calls).toEqual([])
+})
+
+test('a registry root still notifies once', async () => {
+  const calls = countingFetch()
+  const agent = { session: { id: 'root-1', header: { cwd: '/tmp/project' } } }
+  const hook = hooks(
+    { ...silent(), ntfyTopic: ref('dsh-test'), notifyTurnEnd: ref(true) },
+    { agents: { roots: () => [agent] } },
+  )
+  hook.turnEnd({ agent, turn: 6 })
+  await Promise.resolve()
+  expect(calls).toHaveLength(1)
 })
 
 test('approval notifications follow approval/asked only', async () => {

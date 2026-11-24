@@ -29,6 +29,12 @@ export interface TotemConfig {
   provider: Volatile<string>
   /** Secondary model id; empty uses the deployment default. */
   model: Volatile<string>
+  /** Session-title model provider; empty follows the memory model. */
+  titleProvider: Volatile<string>
+  /** Session-title model id; empty follows the memory model. */
+  titleModel: Volatile<string>
+  /** Write a hover TLDR for the last completed turns. */
+  tldr: Volatile<boolean>
   /** Register memories after successful file reads. */
   readRegister: boolean
   /** Register memories after successful file writes/edits/patches. */
@@ -43,6 +49,10 @@ export interface TotemConfig {
   maxTokens: number
   /** Input byte cap for one distillation call. */
   maxInputBytes: number
+  /** Output cap for a native compaction summary. */
+  compactionTokens: number
+  /** Input byte cap for a native compaction summary. */
+  compactionMaxInputBytes: number
   /** Per-call MCP and distillation timeout. */
   timeoutMs: number
   /** Log registration failures to the Host console. */
@@ -59,6 +69,10 @@ export interface TotemConfig {
   telegramBotToken: Volatile<string>
   /** Telegram chat id. */
   telegramChatId: Volatile<string>
+  /** Force a turn that edited files to run a check before it may end. */
+  verifyGate: Volatile<boolean>
+  /** Extra steps the gate may force per turn. */
+  verifyGateNudges: Volatile<number>
   /** Send a push notification when a turn finishes. */
   notifyTurnEnd: Volatile<boolean>
   /** Send a push notification when a tool approval is requested. */
@@ -176,6 +190,46 @@ export class TotemService extends Service {
       model,
       maxTokens: this.config.maxTokens,
       maxInputBytes: this.config.maxInputBytes,
+      timeoutMs: this.config.timeoutMs,
+    }
+  }
+
+  /**
+   * Route for native compaction summaries.
+   *
+   * It shares the memory model but gets a larger output and input budget: a
+   * compact has to carry the whole conversation history that just disappeared,
+   * while an ordinary memory distillation only describes one file touch.
+   */
+  compactionTarget(): DistillTarget | undefined {
+    const target = this.target()
+    if (target === undefined) return undefined
+    return {
+      ...target,
+      maxTokens: this.config.compactionTokens,
+      maxInputBytes: this.config.compactionMaxInputBytes,
+    }
+  }
+
+  /**
+   * Resolve the cheap route used for titles and hover summaries. The dedicated
+   * titles choice wins, then the memory model, then the deployment default.
+   */
+  titleTarget(): DistillTarget | undefined {
+    const fallback = (this.ctx.get('agentDefaultModel') as { currentSelection?: () => { provider: string; model: string } } | undefined)
+      ?.currentSelection?.()
+    const provider = this.config.titleProvider.get().trim()
+      || this.config.provider.get().trim()
+      || fallback?.provider
+    const model = this.config.titleModel.get().trim()
+      || this.config.model.get().trim()
+      || fallback?.model
+    if (provider === undefined || model === undefined) return undefined
+    return {
+      provider,
+      model,
+      maxTokens: 2_048,
+      maxInputBytes: 12_000,
       timeoutMs: this.config.timeoutMs,
     }
   }

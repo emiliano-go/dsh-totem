@@ -90,6 +90,76 @@ interface Token {
   editable: HTMLElement
 }
 
+/** The slice of a Lexical editor this picker needs. */
+interface LexicalEditorLike {
+  dispatchCommand: (command: { type: string }, payload?: unknown) => boolean
+  _commands?: Map<{ type?: string }, unknown>
+}
+
+/** Walk up from a composer text node to the Lexical editor bound to its root. */
+export function lexicalEditorOf(node: Node): LexicalEditorLike | undefined {
+  let element = node.parentElement
+  while (element !== null) {
+    const editor = (element as unknown as { __lexicalEditor?: LexicalEditorLike }).__lexicalEditor
+    if (typeof editor?.dispatchCommand === 'function') return editor
+    element = element.parentElement
+  }
+  return undefined
+}
+
+/**
+ * Replace the typed `:query` with the chosen emoji through Lexical commands.
+ * @param editor - composer editor bound to the contenteditable root.
+ * @param query - shortcode text after the colon.
+ * @param emoji - Unicode emoji to insert.
+ */
+export function insertEmojiViaEditor(editor: LexicalEditorLike, query: string, emoji: string): void {
+  // Lexical keys its command registry by command OBJECT identity, so a plain
+  // `{ type }` object is ignored. Reuse the exact command instances the editor
+  // registered, found by their type string.
+  const registered = (type: string): { type: string } => {
+    for (const command of editor._commands?.keys() ?? []) {
+      if (command.type === type) return command as { type: string }
+    }
+    return { type }
+  }
+  const deleteCommand = registered('DELETE_CHARACTER_COMMAND')
+  const insertCommand = registered('CONTROLLED_TEXT_INSERTION_COMMAND')
+  for (let index = 0; index < query.length + 1; index += 1) {
+    editor.dispatchCommand(deleteCommand, true)
+  }
+  editor.dispatchCommand(insertCommand, emoji)
+}
+
+/**
+ * Colours for the current DSH theme. DSH sets theme aliases on the root when
+ * available; otherwise the page background decides light vs dark.
+ */
+function themeColors(doc: Document): {
+  background: string
+  color: string
+  border: string
+  hover: string
+  shadow: string
+  scheme: 'light' | 'dark'
+} {
+  const root = getComputedStyle(doc.documentElement)
+  const pick = (name: string): string => root.getPropertyValue(name).trim()
+  const match = /rgba?\(([^)]+)\)/u.exec(getComputedStyle(doc.body).backgroundColor)
+  const channels = match?.[1].split(',').map(part => Number.parseFloat(part.trim())) ?? [255, 255, 255, 1]
+  const alpha = channels[3] ?? 1
+  const luminance = 0.2126 * (channels[0] ?? 255) + 0.7152 * (channels[1] ?? 255) + 0.0722 * (channels[2] ?? 255)
+  const light = alpha > 0 ? luminance > 128 : !matchMedia('(prefers-color-scheme: dark)').matches
+  return {
+    background: pick('--dsw-alias-bg-layer-2') || (light ? '#ffffff' : '#1b1b1f'),
+    color: pick('--dsw-alias-label-primary') || (light ? '#0f1115' : '#f2f2f2'),
+    border: pick('--dsw-alias-border-l2') || (light ? 'rgba(0,0,0,.12)' : 'rgba(255,255,255,.18)'),
+    hover: pick('--dsw-alias-interactive-bg-hover') || (light ? 'rgba(0,0,0,.06)' : 'rgba(255,255,255,.10)'),
+    shadow: light ? '0 12px 32px rgba(0,0,0,.16)' : '0 12px 32px rgba(0,0,0,.45)',
+    scheme: light ? 'light' : 'dark',
+  }
+}
+
 function tokenAtCaret(doc: Document): Token | undefined {
   const selection = doc.getSelection()
   if (selection === null || !selection.isCollapsed || selection.rangeCount === 0) return undefined
@@ -131,6 +201,17 @@ export function installEmojiAutocomplete(
     if (token === undefined) return
     const entry = suggestions[active]
     if (entry === undefined) return
+    // The DSH composer is Lexical. Mutating its DOM by hand and dispatching a
+    // plain `input` event desynchronises the editor state, and the next
+    // reconciliation wipes the draft. Drive the editor's own commands instead:
+    // backspace the `:query` from the live caret, then insert the emoji.
+    const editor = lexicalEditorOf(token.node)
+    if (editor !== undefined) {
+      insertEmojiViaEditor(editor, token.query, entry.emoji)
+      close()
+      return
+    }
+    // Plain contenteditable fallback (no Lexical root found).
     const selection = doc.getSelection()
     if (selection === null) return
     const range = doc.createRange()
@@ -154,6 +235,7 @@ export function installEmojiAutocomplete(
 
   const paint = () => {
     if (popup === undefined || token === undefined) return
+    const colors = themeColors(doc)
     const selection = doc.getSelection()
     if (selection === null || selection.rangeCount === 0) return
     const range = selection.getRangeAt(0).cloneRange()
@@ -167,7 +249,7 @@ export function installEmojiAutocomplete(
       row.style.cssText = [
         'display:flex', 'align-items:center', 'gap:8px', 'width:100%',
         'padding:6px 8px', 'border:0', 'border-radius:6px', 'cursor:pointer',
-        'background:' + (index === active ? 'rgba(127,127,127,.22)' : 'transparent'),
+        'background:' + (index === active ? colors.hover : 'transparent'),
         'color:inherit', 'font:inherit', 'text-align:left',
       ].join(';')
       const glyph = doc.createElement('span')
@@ -185,6 +267,11 @@ export function installEmojiAutocomplete(
       })
       return row
     }))
+    popup.style.background = colors.background
+    popup.style.color = colors.color
+    popup.style.border = `1px solid ${colors.border}`
+    popup.style.boxShadow = colors.shadow
+    popup.style.colorScheme = colors.scheme
     popup.style.top = `${rect.bottom + 6}px`
     const maxLeft = (doc.defaultView?.innerWidth ?? 0) - 268
     popup.style.left = `${Math.max(8, Math.min(rect.left, maxLeft))}px`
@@ -213,8 +300,6 @@ export function installEmojiAutocomplete(
       popup.style.cssText = [
         'position:fixed', 'z-index:2147483000', 'width:260px', 'max-height:280px',
         'overflow:auto', 'padding:4px', 'border-radius:10px',
-        'background:var(--dsw-alias-bg-elevated,#1b1b1f)', 'color:var(--dsw-alias-label-primary,#eee)',
-        'border:1px solid rgba(127,127,127,.35)', 'box-shadow:0 12px 32px rgba(0,0,0,.35)',
         'font:13px/1.4 system-ui,sans-serif',
       ].join(';')
       doc.body.append(popup)

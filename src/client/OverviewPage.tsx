@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { OverviewData, OverviewResult, OverviewSource } from './overview.ts'
+import { ApprovalsSection } from './ApprovalsSection.tsx'
 
 export interface OverviewFace {
   load: (source?: OverviewSource) => Promise<OverviewResult>
@@ -245,6 +246,7 @@ export function OverviewPage(props: OverviewPageProps) {
   return (
     <div style={PAGE}>
       <div style={INNER}>
+        <ApprovalsSection />
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 2 }}>
             {SOURCES.map(option => (

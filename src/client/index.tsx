@@ -12,10 +12,13 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import { TotemMemoryCard } from './TotemMemoryCard.tsx'
 import { TotemMemoryCardController } from './controller.ts'
 import { AssistantSection } from './AssistantSection.tsx'
+import { approvals } from './approvals.ts'
 import { AssistantController } from './assistant-controller.ts'
 import { VerifyController } from './verify-card.ts'
 import { VerifyTurnCard } from './VerifyTurnCard.tsx'
 import { SessionUnreadIcon } from './SessionUnreadIcon.tsx'
+import { SessionTldr } from './SessionTldr.tsx'
+import { TldrApi } from './tldr.ts'
 import { SessionUnreadController, type UiSessionLike } from './session-unread.ts'
 import { UnreadApi } from './unread-sync.ts'
 import { UNREAD_MENU_ORDER, unreadMenuActions, type ContextMenusLike } from './unread-menu.ts'
@@ -36,6 +39,20 @@ export const inject = ['slots', 'remote', 'remote.session', 'configForms']
  */
 export function apply(ctx: ClientContext): void {
   registerPasteToFile(ctx)
+  // Hover TLDR: the Host generates it at turn end; the card only reads it.
+  // Reading the token lazily keeps a settings edit effective without a reload.
+  const tldr = new TldrApi(() => {
+    const value = (ctx.configForms.get('totem').getSnapshot().value ?? {}) as { apiToken?: string }
+    return value.apiToken ?? ''
+  })
+  ctx.effect(() => (ctx.slots as unknown as {
+    inject: (name: string, register: () => unknown) => () => void
+  }).inject('sidebar.session.row.hover', () => ctx.slots.register({
+    name: 'sidebar.session.row.hover',
+    id: 'totem.tldr',
+    order: 20,
+    inject: () => ({ load: (sessionId: string) => tldr.load(sessionId) }),
+  } as never, SessionTldr as never)), 'dsh-totem: hover tldr')
   const card = new TotemMemoryCardController(ctx.configForms.get('totem'), ctx)
   ctx.effect(() => () => { card.dispose() }, 'dsh-totem: model card lifetime')
   const face = card.inject()
@@ -163,6 +180,17 @@ export function apply(ctx: ClientContext): void {
     label: () => 'Assistant',
     inject: () => assistantFace,
   }, AssistantSection)), 'dsh-totem: assistant section')
+
+  // Release approvals: one polling store feeds the Overview block and the
+  // sidebar dot, so both stay in step without a second request.
+  approvals.configure(() => {
+    const value = (ctx.configForms.get('totem').getSnapshot().value ?? {}) as { apiToken?: string }
+    return value.apiToken ?? ''
+  })
+  ctx.effect(() => {
+    approvals.start()
+    return () => { approvals.stop() }
+  }, 'dsh-totem: approval polling')
 
   ctx.effect(() => ctx.configForms.whileServed(['totem'], () => ctx.slots.inject(
     'plugins.item',

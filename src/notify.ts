@@ -108,6 +108,51 @@ function sessionLabel(session: { id?: string; header?: { cwd?: string } } | unde
   return session?.id ?? 'session'
 }
 
+/** Durable session lineage: a child created for delegation rather than a user. */
+interface DelegationHeader {
+  readonly origin?: string
+  readonly delegationDepth?: number
+}
+
+/** The live agent shape the notification hooks need. */
+interface NotifyingAgent {
+  readonly parentAgent?: unknown
+  readonly session?: {
+    readonly id?: string
+    readonly header?: DelegationHeader & { readonly cwd?: string }
+  }
+}
+
+/**
+ * True when a turn belongs to a delegated child, whose completion is noise:
+ * one workflow can close hundreds of them and only the root going quiet
+ * matters.
+ *
+ * The runtime `Agent` exposes no `parentAgent` property (ownership lives in the
+ * agent registry), so a `parentAgent !== undefined` test alone never fires. The
+ * durable session header is the reliable signal: `origin: 'subagent'` is the
+ * product classification, `delegationDepth > 0` survives resume, and the live
+ * registry's root set catches children created before either field existed.
+ * @param ctx - plugin context, used only to reach the optional agent registry.
+ * @param agent - the agent whose turn is stopping.
+ * @returns whether the turn belongs to a subagent and must stay silent.
+ */
+function isDelegatedTurn(ctx: import('@deepseek-ai/cordis').Context, agent: NotifyingAgent): boolean {
+  if (agent.parentAgent !== undefined) return true
+  const header = agent.session?.header
+  if (header?.origin === 'subagent') return true
+  if ((header?.delegationDepth ?? 0) > 0) return true
+  try {
+    const registry = (ctx as { get?: (name: string) => unknown }).get?.('agents') as
+      { roots?: () => readonly unknown[] } | undefined
+    const roots = registry?.roots?.()
+    if (Array.isArray(roots)) return !roots.includes(agent)
+  } catch {
+    // No registry (tests, stripped compositions): fall back to the header.
+  }
+  return false
+}
+
 /**
  * Notify on turn completion and on tool-approval requests.
  *
@@ -126,8 +171,8 @@ export function registerNotificationHooks(ctx: import('@deepseek-ai/cordis').Con
   ctx.on('agent/turn-stopping', ({ agent, turn }) => {
     try {
       if (!flag(config.notifyTurnEnd, true) || !hasNotificationChannel(config)) return
-      if (agent.parentAgent !== undefined) return
-      const session = (agent as { session?: { id?: string; header?: { cwd?: string } } }).session
+      if (isDelegatedTurn(ctx, agent as NotifyingAgent)) return
+      const session = (agent as NotifyingAgent).session
       const cwd = session?.header?.cwd ?? ''
       const lines = [`${sessionLabel(session)} · turn ${turn}`]
       if (cwd.length > 0) lines.push(cwd)

@@ -21,6 +21,7 @@ import { clueSeeds, generateClues } from './clues.ts'
 import { ReminderService, registerReminderTools } from './reminders.ts'
 import { WatchService, registerWatchTools } from './watches.ts'
 import { registerAssistantRoutes } from './routes.ts'
+import { registerApprovalRoutes } from './approvals.ts'
 import { registerNotificationHooks, registerNotifyTool } from './notify.ts'
 import { registerCiTools } from './ci.ts'
 import { UnreadStore } from './unread.ts'
@@ -36,8 +37,11 @@ import { registerRecallTool } from './recall.ts'
 import { ConflictInbox } from './conflicts.ts'
 import { VerifyLane, VerifyStore } from './verify-lane.ts'
 import { RestartController } from './restart.ts'
+import { evaluateTurn, GATE_PROMPT } from './verify-gate.ts'
+import { EXPLORE_PROMPT, ExploreGate, MUTATING_TOOLS } from './explore.ts'
 import { registerDesignProxy } from './design-proxy.ts'
 import { budgetFor, clipToTokens } from './budget.ts'
+import { TitlesService } from './titles.ts'
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -49,7 +53,7 @@ declare module '@deepseek-ai/dsh-llm' {
 export const name = 'totem'
 
 /** Services required before tool, prompt, and digest registration. */
-export const inject = ['tools', 'llm', 'systemPrompt', 'workingDirectory', 'agents']
+export const inject = ['tools', 'llm', 'systemPrompt', 'workingDirectory', 'sessions', 'agents', 'sessionTitle']
 
 /** Plugin configuration. */
 export interface Config {
@@ -71,6 +75,12 @@ export interface Config {
   provider: Volatile<string>
   /** Secondary model id; empty uses the deployment default model. */
   model: Volatile<string>
+  /** Session-title model provider; empty follows the memory model. */
+  titleProvider: Volatile<string>
+  /** Session-title model id; empty follows the memory model. */
+  titleModel: Volatile<string>
+  /** Write a hover TLDR for the last completed turns. */
+  tldr: Volatile<boolean>
   /** Register a memory after every successful file read. */
   readRegister: boolean
   /** Register a memory after every successful write, edit, or patch. */
@@ -89,6 +99,10 @@ export interface Config {
   maxTokens: number
   /** Input byte cap for one distillation call. */
   maxInputBytes: number
+  /** Output cap for a native compaction summary. */
+  compactionTokens: number
+  /** Input byte cap for a native compaction summary. */
+  compactionMaxInputBytes: number
   /** Per-call Totem and distillation timeout. */
   timeoutMs: number
   /** Log memory registration failures. */
@@ -147,6 +161,12 @@ export interface Config {
   restartService: Volatile<string>
   /** Local quiet window for silent reminders, e.g. "22:00-08:00"; empty disables it. */
   quietHours: Volatile<string>
+  /** Force a turn that edited files to run a check before it may end. */
+  verifyGate: Volatile<boolean>
+  /** Extra steps the gate may force per turn (0 disables it). */
+  verifyGateNudges: Volatile<number>
+  /** Refuse further edits while the same failure repeats and nothing new was tried. */
+  exploreGate: Volatile<boolean>
   /** Continue turns and resume interrupted continuable subagents after a Host restart. */
   resumeInterrupted: Volatile<boolean>
   /** Only Sessions active within this many minutes are considered. */
@@ -174,6 +194,9 @@ export const Config: z<Config> = z.object({
   cwd: z.string(),
   provider: z.string().default('').volatile(),
   model: z.string().default('').volatile(),
+  titleProvider: z.string().default('').volatile(),
+  titleModel: z.string().default('').volatile(),
+  tldr: z.boolean().default(true).volatile(),
   readRegister: z.boolean().default(true),
   autoRegister: z.boolean().default(true),
   preferFileContext: z.boolean().default(true),
@@ -183,6 +206,8 @@ export const Config: z<Config> = z.object({
   recoveryTokens: z.number().step(1).min(0).default(900),
   maxTokens: z.number().step(1).min(64).default(512),
   maxInputBytes: z.number().step(1).min(1024).default(24000),
+  compactionTokens: z.number().step(1).min(256).default(2048),
+  compactionMaxInputBytes: z.number().step(1).min(4096).default(64000),
   timeoutMs: z.number().step(1).min(1000).default(15000),
   debug: z.boolean().default(false),
   userContext: z.boolean().default(true),
@@ -213,6 +238,9 @@ export const Config: z<Config> = z.object({
   verifyDisable: z.array(String).default([]).volatile(),
   restartCommand: z.string().default('dsh-totem').volatile(),
   restartService: z.string().default('dsh-totem.service').volatile(),
+  verifyGate: z.boolean().default(true).volatile(),
+  verifyGateNudges: z.number().step(1).min(0).max(5).default(2).volatile(),
+  exploreGate: z.boolean().default(true).volatile(),
   quietHours: z.string().default('22:00-08:00').volatile(),
   resumeInterrupted: z.boolean().default(true).volatile(),
   resumeWindowMinutes: z.number().step(1).min(1).default(30),
@@ -242,6 +270,9 @@ export function resolveConfig(config: Config): TotemConfig {
     ...config.cwd === undefined || config.cwd.trim() === '' ? {} : { cwd: config.cwd },
     provider: config.provider,
     model: config.model,
+    titleProvider: config.titleProvider,
+    titleModel: config.titleModel,
+    tldr: config.tldr,
     readRegister: config.readRegister,
     autoRegister: config.autoRegister,
     preferFileContext: config.preferFileContext,
@@ -251,6 +282,8 @@ export function resolveConfig(config: Config): TotemConfig {
     recoveryTokens: config.recoveryTokens,
     maxTokens: config.maxTokens,
     maxInputBytes: config.maxInputBytes,
+    compactionTokens: config.compactionTokens,
+    compactionMaxInputBytes: config.compactionMaxInputBytes,
     timeoutMs: config.timeoutMs,
     debug: config.debug,
     apiToken: config.apiToken,
@@ -259,6 +292,9 @@ export function resolveConfig(config: Config): TotemConfig {
     ntfyToken: config.ntfyToken,
     telegramBotToken: config.telegramBotToken,
     telegramChatId: config.telegramChatId,
+    verifyGate: config.verifyGate,
+    exploreGate: config.exploreGate,
+    verifyGateNudges: config.verifyGateNudges,
     notifyTurnEnd: config.notifyTurnEnd,
     notifyApproval: config.notifyApproval,
     restartCommand: config.restartCommand,
@@ -350,6 +386,18 @@ export function apply(ctx: Context, config: Config): void {
     text: MEMORY_PROMPT,
   })
 
+  ctx.systemPrompt.section({
+    name: 'totem:exploration',
+    order: ctx.systemPrompt.getSectionOrder('TOOL_WORKFLOW') + 1,
+    text: EXPLORE_PROMPT,
+  })
+
+  ctx.systemPrompt.section({
+    name: 'totem:verification',
+    order: ctx.systemPrompt.getSectionOrder('TOOL_WORKFLOW') + 1,
+    text: GATE_PROMPT,
+  })
+
   const conflicts = new ConflictInbox()
   // Sessions with a turn in flight; a deferred restart waits for this to empty.
   const running = new Set<string>()
@@ -358,6 +406,25 @@ export function apply(ctx: Context, config: Config): void {
     service: () => totem.config.restartService.get(),
     supervised: () => process.env.INVOCATION_ID !== undefined,
     busy: () => running.size > 0,
+  })
+
+  const explorer = new ExploreGate()
+
+  // Read-only shell commands cannot discover anything; anything the session has
+  // not run before can. While the same failure repeats with nothing new tried,
+  // file mutations are refused.
+  ctx.on('tools/pre-execute', async (exec, next) => {
+    const name = (exec as { name?: string }).name
+    if (name === undefined || !MUTATING_TOOLS.has(name)) return next()
+    try {
+      if (!totem.config.exploreGate.get()) return next()
+      const sessionId = (exec as { agent?: { session?: { id?: string } } }).agent?.session?.id
+      const reason = explorer.blocked(sessionId)
+      if (reason !== undefined) return { kind: 'deny', reason }
+    } catch {
+      // A gate that throws must not block work.
+    }
+    return next()
   })
 
   // The turn boundary is the safe moment to relaunch: the buffer has been
@@ -414,6 +481,24 @@ export function apply(ctx: Context, config: Config): void {
   // Shared across browser profiles and devices; the client keeps a local
   // mirror for reloads and reconciles against this on load/focus/poll.
   const unread = new UnreadStore()
+  // Titles and hover summaries share one cheap route. The title provider is
+  // the sole occupant: the base first-prompt provider is disabled in
+  // cordis.patch.yml so this one can register.
+  const titles = new TitlesService(
+    ctx,
+    { titleTarget: () => totem.titleTarget() },
+    () => ({
+      provider: resolved.titleProvider.get(),
+      model: resolved.titleModel.get(),
+      tldr: resolved.tldr.get(),
+    }),
+  )
+  try {
+    ctx.effect(() => titles.register(), 'dsh-totem: session titles')
+  } catch (error) {
+    ctx.logger?.warn(`dsh-totem: session title provider was not registered: ${String(error)}`)
+  }
+  ctx.effect(() => () => { titles.dispose() }, 'dsh-totem: title summaries')
 
   registerAssistantRoutes(ctx, {
     totem,
@@ -421,12 +506,14 @@ export function apply(ctx: Context, config: Config): void {
     watches,
     candidates,
     unread,
+    tldr: titles,
     verifyLane,
     verify: verifyStore,
     overview,
     conflicts,
     restart: restarter,
   })
+  registerApprovalRoutes(ctx, { totem })
   if (config.designProxy) registerDesignProxy(ctx, { port: config.designEditorPort })
   registerInterruptedTurnResume(ctx, {
     enabled: config.resumeInterrupted,
@@ -446,15 +533,19 @@ export function apply(ctx: Context, config: Config): void {
     texts: string[]
     tools: string[]
     calls: Map<string, { name: string; arguments: string }>
-    changes: { tool: string; path: string; input: string; output: string; diff?: string }[]
-    checks: { command: string; cwd?: string; exitCode: number; output: string }[]
+    changes: { tool: string; path: string; input: string; output: string; diff?: string; seq: number }[]
+    checks: { command: string; cwd?: string; exitCode: number; output: string; seq: number }[]
+    /** Monotonic position, so a check can be ordered against an edit. */
+    seq: number
+    /** Steps the verification gate has already forced this turn. */
+    nudges: number
     messageId?: string
   }
   const buffers = new WeakMap<object, TurnBuffer>()
   const bufferFor = (session: object): TurnBuffer => {
     let buffer = buffers.get(session)
     if (buffer === undefined) {
-      buffer = { turn: 0, task: '', texts: [], tools: [], calls: new Map(), changes: [], checks: [] }
+      buffer = { turn: 0, task: '', texts: [], tools: [], calls: new Map(), changes: [], checks: [], seq: 0, nudges: 0 }
       buffers.set(session, buffer)
     }
     return buffer
@@ -553,6 +644,7 @@ export function apply(ctx: Context, config: Config): void {
           path,
           input: call.arguments,
           output,
+          seq: buffer.seq++,
           ...data.meta?.diffs === undefined ? {} : { diff: JSON.stringify(data.meta.diffs) },
         })
       } else if (['read', 'grep', 'glob', 'bash'].includes(call.name)) {
@@ -564,21 +656,30 @@ export function apply(ctx: Context, config: Config): void {
             try {
               const args = JSON.parse(call.arguments) as { command?: unknown; workdir?: unknown }
               const command = typeof args.command === 'string' ? args.command : ''
+              // Any command the session has not run before is an experiment; pure
+              // inspection does not count. A repeated failure plus no experiment
+              // is what the gate refuses to let you edit through.
+              if (command.length > 0) explorer.recordCommand(eventSessionId, command)
               if (/\b(test|pytest|bun test|cargo test|go test|npm test|pnpm test|just test|lint|typecheck|build)\b/i.test(command)) {
+                explorer.recordCheck(eventSessionId, { exitCode, output, command })
                 buffer.checks.push({
                   command: command.slice(0, 1000),
                   ...typeof args.workdir === 'string' ? { cwd: args.workdir } : {},
                   exitCode,
                   output,
+                  seq: buffer.seq++,
                 })
               }
             } catch {}
           }
         }
       }
+    } else if (event.type === 'session/disposed') {
+      explorer.forget(eventSessionId)
     } else if (event.type === 'turn/end') {
       running.delete(eventSessionId)
       restarter.tick()
+      titles.noteTurnEnd(session)
       const buffer = buffers.get(session)
       buffers.delete(session)
       if (buffer === undefined) return
@@ -600,6 +701,37 @@ export function apply(ctx: Context, config: Config): void {
         changes: buffer.changes.map(change => ({ path: change.path, tool: change.tool })),
         checks: buffer.checks,
       })
+    }
+  })
+
+  // Deterministic verification gate. Edits without a check afterwards are a
+  // hypothesis, so the turn takes one more step instead of ending: the steering
+  // message lands in the inbox and the loop continues with it. The budget keeps
+  // a stubborn turn from looping forever, and a refusal is visible in the
+  // transcript rather than silently accepted.
+  ctx.on('agent/turn-stopping', ({ agent }) => {
+    try {
+      if (!totem.config.verifyGate.get()) return
+      const budget = totem.config.verifyGateNudges.get()
+      if (budget <= 0) return
+      const typed = agent as { session?: object; steer?: (message: unknown) => void }
+      const session = typed.session
+      if (session === undefined || typeof typed.steer !== 'function') return
+      const buffer = buffers.get(session)
+      if (buffer === undefined || buffer.nudges >= budget) return
+      const verdict = evaluateTurn({
+        changes: buffer.changes,
+        checks: buffer.checks,
+        command: totem.config.verifyCommand.get().trim(),
+      })
+      if (!verdict.block || verdict.message === undefined) return
+      buffer.nudges += 1
+      typed.steer(createUserMessage({
+        content: [{ type: 'text', text: verdict.message }],
+        source: { kind: 'user' },
+      }))
+    } catch (error) {
+      console.error('[totem] verification gate failed:', error)
     }
   })
 

@@ -31,6 +31,8 @@ await rm('lib', { recursive: true, force: true })
 const targets: [{ entry: string; outdir: string }] = [
   { entry: 'src/index.ts', outdir: 'lib' },
   { entry: 'src/tool-fs/index.ts', outdir: 'lib/tool-fs' },
+  { entry: 'src/pipelines/index.ts', outdir: 'lib/pipelines' },
+  { entry: 'src/compaction/index.ts', outdir: 'lib/compaction' },
 ]
 
 for (const target of targets) {

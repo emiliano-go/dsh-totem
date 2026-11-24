@@ -2,34 +2,51 @@
 
 Totem persistent engineering memory for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
-This bundle does seven things:
+This bundle has nine surfaces:
 
-1. **Native memory tools.** `memory_search`, `memory_get`, `memory_list`, `memory_create`, `memory_update`, `memory_delete`, `memory_recent`, `memory_tasks`, `memory_commands`, `memory_relate`, `memory_relations`, `memory_history`, `memory_verify`, `memory_check_record`, `memory_audit`, `engineering_context`, `memory_export`, `memory_import`, `memory_feedback`, `memory_feedback_list`, `memory_train_models`, `memory_consolidate`, `memory_recall_sessions`, `memory_conflicts`, `memory_resolve_conflict`, `memory_eval`; proxied to the Totem MCP server over one lazy stdio connection.
-2. **Memory-gated file tools.** A fork of `@deepseek-ai/dsh-tool-fs`: `read`, `write`, `edit`, and `apply_patch` require a `memory` argument (`{ kind: "register", symbol?: "<name>" }`). After each successful touch the service registers the file (and each changed symbol, for writes) in Totem.
-3. **Secondary memory model.** Memory prose is authored by a separately configured model (or the deployment default when unset), selected in the Web GUI on the Plugins page (`provider`, `model`). If distillation fails, a deterministic draft is stored.
-4. **Tool-associated memories.** `memory_create` / `memory_update` accept `tools: ["write", "edit", ...]`, stored as `tool:<name>` tags. A `tools/pre-execute` gate denies that tool while any associated memory is unread and tells the agent to call `memory_for_tool`; after the read, the retry proceeds. The read stays fresh for three turns, then the block re-arms. `tool:*` guards every tool. The gate is fail-open and skips memory tools.
-5. **Large-paste attachments.** The Web composer turns a plain-text paste above `pasteToFileChars` characters (default 4,000) or `pasteToFileLines` lines (default 80) into a `.txt` draft attachment and leaves a compact marker. `pasteToFile: false` disables it.
+1. **Native memory tools.** The full Totem MCP tool set is proxied over one
+   lazy stdio connection, with a memory-model route for prose and retrieval.
+2. **Memory-gated file tools.** `read`, `write`, `edit`, and `apply_patch`
+   require a memory marker; a successful touch registers the file and changed
+   symbols. `read_image` is the image path.
+3. **Native compaction.** The stock compaction backend is replaced by
+   `dsh-totem/compaction`, which asks Totem's memory model for the compact,
+   archives every compact per session, and exposes `compaction_search`.
+   Recovery then re-injects durable memory at the next step.
+4. **Turn distillation, gates, and tool-associated memory.** Completed turns
+   produce candidates; a verification gate requires a check after edits, an
+   exploration gate blocks repeated blind edits, and `tool:<name>` tags gate
+   tools until their memories are read.
+5. **Commands, triage, and workflow skills.** `/remember`, `/recall`,
+   `/forget`, `/memory`, `/handoff`, and `/restart` run without a model turn.
+   `/triage` and `/research` steer one turn. Stored workflows become skills.
+6. **Web assistant.** Overview, usage, unread marks, titles and hover TLDRs,
+   reminders, watches, notifications, verify cards, release approvals, restart,
+   interrupted-turn resume, and the design editor proxy.
+7. **Research and browser MCP servers.** SearXNG discovery/extraction, chunked
+   reading, Playwright, and agentic browser control, plus the staged
+   `deep-research` skill.
+8. **Audit pipelines.** The opt-in `dsh-totem/pipelines` plugin adds
+   `sec_audit`, `site_audit`, and `pipeline_detail`.
+9. **Portable skills.** Five checked-in skills, a workflow-to-skill provider,
+   and an installer for the external skill set.
 
-A workflow prompt section and a first-step recent-memory digest are also mounted.
+A workflow prompt section and a first-step recent-memory digest are also
+mounted.
 
-4. **Compaction survival.** The plugin notices the Harness compaction markers,
-   persists the session's work before the summary replaces it, and restores the
-   durable decisions, invariants, contracts, and active tasks at the next step.
-5. **Commands, triage, and skills.** `/remember`, `/recall`, `/forget`,
-   `/memory`, `/handoff` run without spending a model turn. `/triage` is the
-   exception: it steers a normal agent turn to work through untriaged
-   TrustSight watcher alerts and keeps the result in an append-only ledger.
-   Every stored workflow is projected into the skill catalog as a loadable
-   skill.
-6. **Conflict inbox and evaluation.** Contradictions reported by a write are
-   kept for review in the Web GUI and resolvable from the model or the human,
-   and `bun run eval` gates ranking quality on a golden case file.
-7. **Research and browser MCP servers.** One research pipeline instead of a
-   pile of search servers: SearXNG-backed discovery and extraction
-   (`searxncrawl`), chunked reading and citation navigation (`cluefinch`),
-   deterministic browser control (`playwright`), and agentic browsing
-   (`browser-use`). The staged `deep-research` skill and `/research` command encode
-   the investigation protocol.
+## Documentation
+
+The durable inventory is in [`docs/`](docs/README.md):
+
+| Document | Covers |
+|---|---|
+| [Customization inventory](docs/customizations.md) | Every entrypoint, patched row, tool, command, client slot, route, state file, and script |
+| [Configuration](docs/configuration.md) | Every `totem` field and default |
+| [Native compaction](docs/compaction.md) | Engine, archive, `compaction_search`, and recovery |
+| [Skills](docs/skills.md) | Portable skills, workflow projection, external installers |
+| [Pipelines](docs/pipelines.md) | Opt-in audit tools |
+| [Operations](docs/operations.md) | Restart, resume, unread, titles/TLDRs, approvals, proxy, notifications |
+| [New machine](docs/new-machine.md) | Exact rebuild path: versions, profile dependencies, services, credentials, skills, and state migration |
 
 ## Requirements
 
@@ -97,8 +114,10 @@ The profile name is arbitrary; `web-totem` keeps the shipped `web` profile untou
 
 ### Providers (OpenCode Go)
 
-The profile patch ships an OpenAI-compatible `opencode-go` route and sets it as
-the default agent and memory model:
+The live `web-totem` profile's user layer adds an OpenAI-compatible
+`opencode-go` route and sets it as the default agent and memory model. This
+layer is intentionally not shipped in the package patch; recreate it with the
+placeholders you need:
 
 ```yaml
 - id: llm-pi-ai
@@ -184,9 +203,15 @@ reports the active encoder.
 
 ## Compaction survival
 
-The Harness compacts long sessions by replacing an older span with one summary
-written by a model. That summary keeps what its summarizer judged important, so
-a decision or gotcha recorded early can disappear.
+The profile uses Totem's native compaction backend. The Harness still selects
+the range and replaces it transactionally; `dsh-totem/compaction` changes the
+summarizer to Totem's memory model and archives the result in
+`~/.dsh/totem/compaction/`. `compaction_search` reads that archive without
+restoring the old transcript. See [docs/compaction.md](docs/compaction.md).
+
+The older recovery path still runs beside it. It keeps what the native summary
+cannot guarantee: a decision or gotcha recorded early can disappear, so the
+plugin also watches both compaction markers.
 
 The plugin watches the session log for both compaction markers
 (`compaction/start` and the `compact-checkpoint` message source), persists the
@@ -201,7 +226,7 @@ Two budgets keep injection honest:
 | Field | Default | Meaning |
 |---|---|---|
 | `digestTokens` | `400` | Token budget for the first-step digest. |
-| `recoveryTokens` | `600` | Token budget for the post-compaction block. |
+| `recoveryTokens` | `900` | Token budget for the post-compaction block. |
 
 The estimate is four characters per token, which slightly over-counts prose and
 therefore errs on the safe side of the budget.
@@ -243,6 +268,42 @@ Host, no model, no GPU — which is also how the rules are tested.
   mutant, and reports the kill rate. A surviving mutant is a test that does not
   notice the behaviour; the source is restored in a `finally` after every run.
 
+### The verification gate
+
+Post-hoc checks cannot undo a turn that asserted an untested conclusion, so the
+gate acts at the boundary: when a turn edits files and no check has passed
+*after* the last edit, the Host steers one more step into the same turn asking
+for the command and its exit status. The turn cannot end until it gets one, or
+until the agent states why the check cannot run here. `verifyGate` (default on)
+and `verifyGateNudges` (default 2) bound it, and `verifyCommand` names the check
+the message asks for. It is the same rule the self-correction literature keeps
+finding: feedback has to come from outside the reasoning, and it has to arrive
+before the claim is made.
+
+Evidence ordering lives in the turn buffer: every mutation and every classified
+check carries a sequence number, and the *most recent* verdict after the last
+edit decides — an earlier green check does not cover a later red one.
+
+### The exploration gate
+
+The verification gate stops a turn from *ending* on an unproven claim; this one
+stops a session from *continuing* on a discredited theory. Two consecutive
+failing checks with the same signature — the output compared after normalising
+numbers and paths, so `expected 2 to be 3` and `expected 7 to be 9` are one
+failure — and no new command since the last of them, mark the session as stuck.
+While stuck, `write`/`edit`/`apply_patch` are denied with the failing signature
+and a short list of what an experiment looks like.
+
+A command clears the block only if the session has not run it before and it is
+not pure inspection: `ls`, `cat`, `grep`, `git diff` and friends look at the
+world without changing the question, so they do not count. `bun -e "…"`,
+`node -e "…"`, a `curl`, a five-line script — that does. The distinction is
+deliberate: re-reading the code is what produces the second identical edit.
+
+`exploreGate` (default on) disables it. The prompt states the habit before the
+gate has to enforce it, and every refusal names the exact failure so the
+experiment can target it.
+
 ## Commands
 
 Registered when the profile mounts `dsh-commands`; a profile without a command
@@ -257,6 +318,7 @@ exceptions, because the evidence work needs a real agent turn.
 | `/forget <id> [reason]` | Delete one memory with a reason. |
 | `/memory` | Active/archived counts, open conflicts, and stale evidence. |
 | `/handoff <summary>` | Store a session handoff before the context is compacted. |
+| `/restart` | Schedule an idle host restart from the composer. |
 | `/triage [12h\|7d\|30\|YYYY-MM-DD\|all] [--limit N]` | Queue a model turn that triages untriaged TrustSight watcher alerts and records each one in `alert-triage/ledger.jsonl`. |
 | `/research <question>` | Queue a model turn that runs the staged deep-research protocol and writes a cited report to `research/<slug>/report.md`. |
 
@@ -289,8 +351,22 @@ feed carries; the result text reports how many remain and repeated runs drain
 the backlog. A window can be hours (`12h`), days (`7d`, or a bare `30` for
 30 days), a `YYYY-MM-DD` date, or `all`.
 
+The prompt is adversarial by default: assume the alert is a true positive until
+the evidence rules it out, analyze every possible TP in a first pass before
+older low-signal alerts, and treat `MFP` as an affirmative finding rather than a
+default for a noisy rule. A code path that remains unexplained is `uncertain`,
+never `MFP`. The queue is pre-sorted: execution/egress/tamper rules and
+IOC/impersonation signals first, then oldest; `priority: "review-first"` marks
+the early slots.
+
+Before the turn starts, `/triage` fast-forwards the TrustSight core checkout
+(the `TRUSTSIGHT_CHECKOUT` path, `<cwd>/trustsight`, or the usual repository
+location) with `git fetch` and `git pull --ff-only`. It refuses to force a dirty
+or diverged checkout; the prompt records the before/after HEAD and marks
+HEAD-dependent checks `unknown` when the pull did not land cleanly.
+
 Every package classified `MFP` is rechecked against the current TrustSight
-**HEAD**: the turn resolves the core checkout commit and instrument version,
+**HEAD**: the turn uses the refreshed core commit and instrument version,
 reconstructs the old and new PKGBUILD texts from the alert diff, and runs
 `analyze_diff` with them. The report's `MFP at HEAD` column and the ledger's
 `head_checks` map record `persists`, `fixed-at-head`, or `unknown` (with a
@@ -451,13 +527,16 @@ Linking (rather than copying) keeps the global view in sync with the checkout.
 External skills are declared in `skills.lock.json` and installed the same way:
 the installer keeps one **shallow, sparse** checkout per repository under
 `~/.local/share/dsh-totem/skills/<name>` and links the skill directory into
-`~/.agents/skills`. Sparse checkout matters — seven repositories sum to roughly
-450 MB of references and assets, of which only the skill paths are
-materialized (143 MB). Adding a skill is one line in the lock file; updates are
+`~/.agents/skills`. Sparse checkout matters — these repositories carry far more
+references and assets than the skill paths need, so only the declared paths are
+materialized. Adding a skill is one line in the lock file; updates are
 `git pull --ff-only` on the next `bun run skills:install`. Current set:
 `taste-skill` (design-taste-frontend), `hallmark`, `last30days`, `impeccable`,
-`humanizer`, `logo-design`, `diagram-design`, and `unslop` (CC BY 4.0,
-credited in its `SKILL.md`). The six upstream Ponytail skills
+`humanizer`, `logo-design`, `diagram-design`, `unslop` (CC BY 4.0, credited in
+its `SKILL.md`), and the six `charles-*` design skills (charles-unslop,
+charles-polish, charles-color-analysis, charles-unreasonable-craft,
+charles-store-screenshots, charles-hero-mockups), and `dimensional-drawing`
+(Apple-style monochrome spec sheets). The six upstream Ponytail skills
 (`ponytail`, `ponytail-audit`, `ponytail-debt`, `ponytail-gain`,
 `ponytail-help`, `ponytail-review`, MIT) are copied separately because one
 repository ships all six; they are not lock entries. `bun run
@@ -670,6 +749,24 @@ If launching the app later bounces through Access in the system browser, the
 Access session expired. Increase the application's session duration in
 Cloudflare Zero Trust; a Bypass policy for `manifest.webmanifest` and the icon
 files is the fallback if an install still cannot read them.
+
+## Design editor over the DSH origin
+
+The claude-design editor listens on its own loopback port, so its printed
+`http://<host>:4720/...` link cannot be reached through the DSH domain. The
+`designProxy` option (default true, port `designEditorPort`, default 4720)
+serves `/design/*` and proxies the editor's SSE WebSocket to
+`127.0.0.1:4720`. A canvas is registered for its exact page and
+`/__deck/events` path whenever its artifact record appears.
+
+```sh
+bun run script/patch-design-links.ts
+```
+
+This makes dsh-claude-artifacts return the pathname
+`/design/<id>/o/<token>` instead of the absolute port URL, so the Artifacts
+page opens the editor through the same origin on every device. Rerun it after
+upgrading `dsh-claude-artifacts`, then restart DSH.
 
 ## Upgrade DSH
 

@@ -2,7 +2,8 @@
 #
 # 1. Replace the host file-tool row with the fork that requires a memory marker.
 # 2. Mount the Totem service, native memory_* tools, workflow prompt, and digest.
-# 3. Override each shipped Web agent preset so its scoped file tools are the fork.
+# 3. Override each shipped Web agent preset so its scoped file tools are the fork
+#    and its native compaction backend writes through Totem's memory model.
 #
 # The preset section is generated from the installed @deepseek-ai/dsh-web-app by
 # script/gen-patch.ts. Regenerate it after upgrading DSH.
@@ -32,7 +33,7 @@
         timeoutMs: 15000
         debug: false
 
-    # ── Research and browser MCP servers ────────────────────────────────────
+    # Research and browser MCP servers
     # One research pipeline, not a pile of search MCPs:
     #   searxncrawl  discovery + page/site Markdown extraction (SearXNG)
     #   cluefinch    chunked full-text reading + link navigation + collection
@@ -40,10 +41,10 @@
     #   browser-use  agentic browsing via a Python REPL against a live browser
     #
     # The search servers need SearXNG with the JSON API enabled. Start the
-    # bundled instance with `docker compose up -d` in deploy/searxng, or point
+    # bundled instance with docker compose up -d in deploy/searxng, or point
     # SEARXNG_URL / MCP_SEARCH_SEARXNG_URL at a remote instance (for example
-    # one hosted on solsticio). `uvx` and `npx` must be on the Host PATH.
-    # Browser servers need Chromium: `bun run research:setup` installs it.
+    # one hosted on solsticio). uvx and npx must be on the Host PATH.
+    # Browser servers need Chromium: bun run research:setup installs it.
 
     - id: mcp-searxncrawl
       name: '@deepseek-ai/dsh-mcp-client'
@@ -191,7 +192,7 @@
           toolResultPruner: true
         config:
           - id: compaction-basic
-            name: '@deepseek-ai/dsh-compaction-basic'
+            name: 'dsh-totem/compaction'
           - id: command-compact
             name: '@deepseek-ai/dsh-command-compact'
           - id: tool-result-pruner
@@ -318,7 +319,7 @@
           toolResultPruner: true
         config:
           - id: compaction-basic
-            name: '@deepseek-ai/dsh-compaction-basic'
+            name: 'dsh-totem/compaction'
           - id: command-compact
             name: '@deepseek-ai/dsh-command-compact'
           - id: tool-result-pruner
@@ -448,7 +449,7 @@
           toolResultPruner: true
         config:
           - id: compaction-basic
-            name: '@deepseek-ai/dsh-compaction-basic'
+            name: 'dsh-totem/compaction'
           - id: command-compact
             name: '@deepseek-ai/dsh-command-compact'
           - id: tool-result-pruner
@@ -538,7 +539,7 @@
           compaction: true
         config:
           - id: compaction-basic
-            name: '@deepseek-ai/dsh-compaction-basic'
+            name: 'dsh-totem/compaction'
           - id: command-compact
             name: '@deepseek-ai/dsh-command-compact'
       - id: persistent-shell

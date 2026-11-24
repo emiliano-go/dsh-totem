@@ -6,5 +6,12 @@
   { "name": "humanizer", "repo": "blader/humanizer", "path": "." },
   { "name": "logo-design", "repo": "kaankiziltug/logo-design-skill", "path": "skills/logo-design" },
   { "name": "diagram-design", "repo": "cathrynlavery/diagram-design", "path": "skills/diagram-design" },
-  { "name": "unslop", "repo": "heydamir/unslop", "path": "skills/unslop" }
+  { "name": "unslop", "repo": "heydamir/unslop", "path": "skills/unslop" },
+  { "name": "charles-unslop", "repo": "LemonFace0309/charles-skills", "path": "skills/design/charles-unslop" },
+  { "name": "charles-polish", "repo": "LemonFace0309/charles-skills", "path": "skills/design/charles-polish" },
+  { "name": "charles-color-analysis", "repo": "LemonFace0309/charles-skills", "path": "skills/design/charles-color-analysis" },
+  { "name": "charles-unreasonable-craft", "repo": "LemonFace0309/charles-skills", "path": "skills/design/charles-unreasonable-craft" },
+  { "name": "charles-store-screenshots", "repo": "LemonFace0309/charles-skills", "path": "skills/design/charles-store-screenshots" },
+  { "name": "charles-hero-mockups", "repo": "LemonFace0309/charles-skills", "path": "skills/drops/charles-hero-mockups" },
+  { "name": "dimensional-drawing", "repo": "enesozturk/dimensional-drawing", "path": "skills/dimensional-drawing" }
 ]

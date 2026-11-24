@@ -18,8 +18,10 @@ test('the lock file declares the expected external skills', () => {
   const lock = readSkillLock(join(import.meta.dir, '..', 'skills.lock.json'))
   const names = lock.map(skill => skill.name).sort()
   expect(names).toEqual([
-    'diagram-design', 'hallmark', 'humanizer', 'impeccable',
-    'last30days', 'logo-design', 'taste-skill', 'unslop',
+    'charles-color-analysis', 'charles-hero-mockups', 'charles-polish',
+    'charles-store-screenshots', 'charles-unreasonable-craft', 'charles-unslop', 'diagram-design',
+    'dimensional-drawing', 'hallmark', 'humanizer', 'impeccable', 'last30days', 'logo-design',
+    'taste-skill', 'unslop',
   ])
   // impeccable ships a DSH-specific variant; pin it instead of the Claude one.
   expect(lock.find(skill => skill.name === 'impeccable')?.path).toBe('.dsh/skills/impeccable')
