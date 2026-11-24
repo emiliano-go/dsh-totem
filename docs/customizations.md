@@ -124,7 +124,7 @@ Registered only when the composition mounts `dsh-commands`:
 | `/memory` | no model turn | Show active/archived counts, open conflicts, stale evidence. |
 | `/handoff <summary>` | no model turn | Store a session summary before compaction. |
 | `/restart` | no model turn | Schedule an idle host restart. |
-| `/triage [window] [--limit N]` | one steered turn | Queue untriaged TrustSight alerts and run evidence triage. |
+| `/triage [window] [--limit N]` | one steered turn | Queue all untriaged TrustSight alerts plus over-threshold packages and campaigns, then run evidence triage. |
 | `/research <question>` | one steered turn | Run the staged deep-research protocol. |
 
 The stock `/compact` command remains mounted through `command-compact`.

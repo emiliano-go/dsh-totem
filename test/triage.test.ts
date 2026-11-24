@@ -197,6 +197,11 @@ describe('triage preparation', () => {
       expect(result.prompt).toContain('possible TPs first')
       expect(result.prompt).toContain('what proves it is not')
       expect(result.prompt).toContain('never downgrade an unexplained path to MFP')
+      expect(result.prompt).toContain('Campaign and threshold sweep')
+      expect(result.prompt).toContain('feed_campaigns')
+      expect(result.prompt).toContain('feed_campaign')
+      expect(result.prompt).toContain('over_threshold')
+      expect(result.prompt).toContain('repo_file')
 
       const files = await readFile(join(dir, 'README.md'), 'utf8')
       expect(files).toContain('ledger.jsonl')

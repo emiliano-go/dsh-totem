@@ -348,11 +348,15 @@ exceptions, because the evidence work needs a real agent turn.
 `/triage` does the deterministic part and leaves the judgement to the agent.
 It reads `<triageDir>/ledger.jsonl`, fetches `trustsight.alerts` from the
 watcher feed, drops every slug already in the ledger, writes a timestamped
-queue, and steers one normal model-visible turn with the batch. The turn uses
-the `trustsight-harness` MCP tools (`feed_message`, `fp_triage`,
-`aur_pkgbuild`, `feed_package_diff`, `rule_info`, `fp_agent_verify`, ...) to
-decide `TP`, `BFP`, `MFP`, or `uncertain` per package. The command itself never
-decides a verdict.
+queue, and steers one normal model-visible turn with all untriaged alerts in
+scope. The turn covers over-threshold packages and TrustSight campaigns too,
+using `feed_campaigns`/`feed_campaign` to add campaign members and
+`feed_search`/`feed_latest`/`feed_many` for packages missing a standalone
+alert. It uses the `trustsight-harness` MCP tools (`feed_message`,
+`fp_triage`, `aur_pkgbuild`, `feed_package_diff`, `rule_info`,
+`fp_agent_verify`, ...) and may read the installed TrustSight rule source with
+`repo_file` when a threshold or campaign rule decides the verdict. The command
+itself never decides a verdict.
 
 ```
 <session cwd>/alert-triage/
@@ -366,10 +370,9 @@ The ledger is append-only and authoritative: a slug that appears there is
 skipped by later runs, so an interrupted run resumes instead of redoing work.
 The default window starts at the newest alert time already in the ledger, with
 a one-day overlap, or the last 7 days when the ledger is empty. `all` removes
-the lower bound; the feed is still paged. The default batch is 20 alerts
-because one turn cannot perform evidence triage on the ~200 alerts a week of
-feed carries; the result text reports how many remain and repeated runs drain
-the backlog. A window can be hours (`12h`), days (`7d`, or a bare `30` for
+the lower bound; the feed is still paged. The default batch is every untriaged
+alert in the window; `--limit N` caps a run and the result text reports how
+many remain. A window can be hours (`12h`), days (`7d`, or a bare `30` for
 30 days), a `YYYY-MM-DD` date, or `all`.
 
 The prompt is adversarial by default: assume the alert is a true positive until
@@ -409,7 +412,7 @@ only when that path is writable from the session.
 | `triageDir` | `''` | Empty uses `<session cwd>/alert-triage`; `~/` is expanded. |
 | `triageFeedUrl` | `''` | Empty uses `WATCHER_FEED_URL`, then `https://watcher.trustsight.org`. |
 | `triageWindowDays` | `7` | Default lookback when the ledger has no entries. |
-| `triageBatch` | `20` | Maximum alerts queued per run; `0` queues every untriaged alert. |
+| `triageBatch` | `0` | Maximum alerts queued per run; `0` queues every untriaged alert. |
 
 Alert titles, headlines, and package names are treated as untrusted feed text:
 they are sanitized into the queue file and the prompt forbids following

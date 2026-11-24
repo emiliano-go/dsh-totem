@@ -102,7 +102,7 @@ Reminder kinds and schedules are documented in the main
 | `triageDir` | `''` | no | Artifact directory; empty uses `<session cwd>/alert-triage`. `~/` is expanded. |
 | `triageFeedUrl` | `''` | no | Watcher feed base; empty uses `WATCHER_FEED_URL`, then the public feed. |
 | `triageWindowDays` | `7` | no | Lookback when the ledger has no entries. |
-| `triageBatch` | `20` | no | Maximum alerts queued per `/triage`; `0` queues every untriaged alert. |
+| `triageBatch` | `0` | no | Maximum alerts queued per `/triage`; `0` queues every untriaged alert. |
 
 The command never decides a verdict. It writes a queue and steers one
 model-visible turn to use the TrustSight MCP evidence tools. The ledger is

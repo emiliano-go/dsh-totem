@@ -236,7 +236,7 @@ export const Config: z<Config> = z.object({
   triageDir: z.string().default(''),
   triageFeedUrl: z.string().default(''),
   triageWindowDays: z.number().step(1).min(1).default(7),
-  triageBatch: z.number().step(1).min(0).default(20),
+  triageBatch: z.number().step(1).min(0).default(0),
   verifyCommand: z.string().default('').volatile(),
   verifyDisable: z.array(String).default([]).volatile(),
   restartCommand: z.string().default('dsh-totem').volatile(),
