@@ -95,7 +95,7 @@ describe('the record', () => {
     const one = buildBrief({ question: 'q', angle: ANGLES[0]!, criteria, dir: '/tmp/a', timeboxMs: 600_000 })
     const two = buildBrief({ question: 'q', angle: ANGLES[1]!, criteria, dir: '/tmp/b', timeboxMs: 600_000 })
     expect(one).not.toBe(two)
-    expect(one).toContain('Do not read or write the project repository')
+    expect(one).toContain('use that absolute path for every file you create')
     expect(one).toContain('10 minutes')
     expect(one).toContain('p95_ms, deps, secure')
   })

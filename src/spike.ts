@@ -13,7 +13,6 @@
  * @module dsh-totem/spike
  */
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { join, relative } from 'node:path'
 
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -95,7 +94,7 @@ export function buildBrief(input: {
     ``,
     `Your angle: ${input.angle}`,
     ``,
-    `Work only inside ${input.dir}. Do not read or write the project repository.`,
+    `Work only inside ${input.dir} — use that absolute path for every file you create. Do not read or write the rest of the project repository.`,
     `Build the smallest runnable MVP that settles this question from your angle — a few files, no polish, no tests beyond one smoke check.`,
     `That directory is the deliverable: leave the MVP runnable, plus a RESULT.md saying what you chose, the dependencies, and what you measured.`,
     `You have ${Math.round(input.timeboxMs / 60_000)} minutes. A rough MVP that exists beats a careful one that does not.`,
@@ -262,14 +261,18 @@ export async function runSpike(
     timeboxMs?: number
     parent: unknown
     signal?: AbortSignal
-    root?: string
+    /** Directory the workspaces are created under; defaults to the process cwd. */
+    workspace?: string
   },
 ): Promise<SpikeRun> {
   if (deps.subagents === undefined) throw new Error('the subagents service is not mounted; the tournament needs it to run candidates')
   const candidates = Math.max(2, Math.min(options.candidates ?? 3, 5))
   const timeboxMs = options.timeboxMs ?? 600_000
   const id = `spike-${Date.now().toString(36)}`
-  const root = options.root ?? join(homedir(), '.dsh', 'totem', 'spikes', id)
+  // Candidates live inside the session workspace, which is the only place the
+  // file sandbox lets a child write. Outside it they silently produce nothing.
+  const workspace = options.workspace ?? process.cwd()
+  const root = join(workspace, '.spike', id)
 
   const results: SpikeCandidate[] = []
   await Promise.all(
@@ -424,6 +427,7 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
         ...args.candidates === undefined ? {} : { candidates: args.candidates },
         timeboxMs: (args.timeboxMinutes ?? totem.config.spikeTimeoutMs.get() / 60_000) * 60_000,
         parent: exec.agent,
+        workspace: (exec.agent as { session?: { header?: { cwd?: string } } } | undefined)?.session?.header?.cwd,
         ...exec.signal === undefined ? {} : { signal: exec.signal },
       })
       return renderSpike(run)
