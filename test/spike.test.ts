@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { ANGLES, buildBrief, inspectDir, parseCriteria, rank, readMeasurements, renderSpike } from '../src/spike.ts'
+import { ANGLES, buildBrief, inspectDir, parseCriteria, rank, readMeasurements, renderSpike, runCommand } from '../src/spike.ts'
 
 const criteria = [
   { name: 'p95_ms', direction: 'min' as const, weight: 1 },
@@ -87,6 +87,22 @@ describe('measurements', () => {
 
   test('no JSON means no measurements', () => {
     expect(readMeasurements('boom')).toEqual({})
+  })
+})
+
+describe('the measurement runner', () => {
+  test('captures stdout from a command run in the directory', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spike-run-'))
+    const out = await runCommand('echo \'{"p95_ms": 12}\'', dir, 5_000)
+    expect(readMeasurements(out)).toEqual({ p95_ms: 12 })
+  })
+
+  test('a command that outlives its budget is killed instead of hanging the run', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spike-run-'))
+    const started = Date.now()
+    const out = await runCommand('sleep 30', dir, 300)
+    expect(out).toBe('')
+    expect(Date.now() - started).toBeLessThan(5_000)
   })
 })
 

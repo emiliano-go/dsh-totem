@@ -12,6 +12,7 @@
  *
  * @module dsh-totem/spike
  */
+import { spawn } from 'node:child_process'
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 
@@ -217,16 +218,33 @@ export function readMeasurements(stdout: string): Record<string, number | boolea
   return {}
 }
 
-/** Run a command in a directory with a hard timeout. */
-async function runCommand(command: string, cwd: string, timeoutMs: number): Promise<string> {
-  const proc = Bun.spawn(['bash', '-lc', command], { cwd, stdout: 'pipe', stderr: 'pipe' })
-  const timer = setTimeout(() => proc.kill(), timeoutMs)
-  try {
-    const [stdout] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-    return stdout
-  } finally {
-    clearTimeout(timer)
-  }
+/**
+ * Run a command in a directory with a hard timeout.
+ *
+ * `node:child_process`, not `Bun.spawn`: the host may be Node, where `Bun` does
+ * not exist, and a swallowed ReferenceError is indistinguishable from a
+ * measurement that printed nothing.
+ */
+export function runCommand(command: string, cwd: string, timeoutMs: number): Promise<string> {
+  return new Promise(resolve => {
+    const child = spawn('bash', ['-lc', command], { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = ''
+    let settled = false
+    const finish = (value: string): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(value)
+    }
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL')
+      finish(stdout)
+    }, timeoutMs)
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => { stdout += chunk })
+    child.on('error', () => finish(stdout))
+    child.on('close', () => finish(stdout))
+  })
 }
 
 /** What the tool needs from the host. */
@@ -266,7 +284,7 @@ export async function runSpike(
   },
 ): Promise<SpikeRun> {
   if (deps.subagents === undefined) throw new Error('the subagents service is not mounted; the tournament needs it to run candidates')
-  const candidates = Math.max(2, Math.min(options.candidates ?? 3, 5))
+  const candidates = Math.max(1, Math.min(options.candidates ?? 3, 5))
   const timeboxMs = options.timeboxMs ?? 600_000
   const id = `spike-${Date.now().toString(36)}`
   // Candidates live inside the session workspace, which is the only place the
