@@ -90,8 +90,11 @@ Titles use `titleProvider`/`titleModel`, falling back to `provider`/`model`.
 
 ## Release approvals
 
-The release tracker is an n8n workflow on the LAN. The browser cannot reach it,
-so the Host proxies list, act, and enqueue calls at `/totem/approvals`.
+The release tracker is
+[emiliano-go/github-release-tracker](https://github.com/emiliano-go/github-release-tracker),
+an n8n workflow that polls GitHub releases and merged PRs, drafts posts for X,
+and holds them for approval. The browser cannot reach the LAN workflow, so the
+Host proxies list, act, and enqueue calls at `/totem/approvals`.
 
 Configuration is deliberately outside the plugin document:
 
@@ -151,8 +154,15 @@ Both are fail-open and can be disabled from the live settings.
 
 ## Design editor proxy
 
-The claude-design editor runs on loopback at `designEditorPort` (default
-`4720`). A remote device cannot reach `http://<host>:4720`, so the Host proxies:
+The design surface is the `dsh-claude-design` profile dependency (version
+`2.16.0`, upstream
+[JimLiu/baoyu-design](https://github.com/JimLiu/baoyu-design)). It is not a
+package dependency; install it with
+`dsh plugin --profile web-totem add dsh-claude-design@2.16.0`. It supplies the
+canvas editor and the `claude-design` skill.
+
+The editor runs on loopback at `designEditorPort` (default `4720`). A remote
+device cannot reach `http://<host>:4720`, so the Host proxies:
 
 - `/design/*` HTTP traffic;
 - a WebSocket upgrade per canvas root.
@@ -160,6 +170,11 @@ The claude-design editor runs on loopback at `designEditorPort` (default
 Canvas roots are discovered from the editor's artifact records; a watcher adds
 or removes upgrade routes as canvases open. The proxy is enabled by default
 (`designProxy: true`) and can be disabled if the editor is not installed.
+
+The repository's `designs/` folder is local output and is not shipped or
+committed; the canvas artifacts themselves are written by the editor into the
+project. On a new machine install the profile dependency and optionally copy
+`designs/` from the old machine if those exact artifacts are still needed.
 
 ## Login and PWA
 

@@ -110,6 +110,11 @@ The tarball's upstream is `https://github.com/LingLambda/dsh-undo`; the
 `0.2.0-totem.6` build is the patched artifact used here. Keep the tarball in
 the machine backup if the upstream branch is not reproducible.
 
+The `dsh-claude-design` upstream is
+[JimLiu/baoyu-design](https://github.com/JimLiu/baoyu-design). It supplies the
+canvas editor and `claude-design` skill; `dsh-totem` only proxies the editor at
+`/design/*`.
+
 ## 4. Profile user layer
 
 The user layer is the largest piece that is not shipped by the package:

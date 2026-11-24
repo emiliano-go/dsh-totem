@@ -679,6 +679,14 @@ The **All / dsh / opencode / encoder** filters cover more than dsh: the
 scan); **Re-import** picks up new history. The page uses the same `apiToken` as
 the other `/totem` routes.
 
+The approvals block is the release tracker at
+[emiliano-go/github-release-tracker](https://github.com/emiliano-go/github-release-tracker):
+it polls GitHub releases and merged PRs, drafts posts for X, and holds each
+draft for approval. `dsh-totem` only proxies the list/act/enqueue calls; the
+tracker owns the queue. Point `DSH_N8N_URL`/`DSH_N8N_TOKEN` (or
+`~/.local/share/totem/approvals.json`) at the tracker before the block can
+serve cards.
+
 ## GitHub CI
 
 - `ci_status` — check runs + legacy statuses for a commit/PR, with pending and
@@ -752,6 +760,12 @@ files is the fallback if an install still cannot read them.
 
 ## Design editor over the DSH origin
 
+The design surface is the `dsh-claude-design` profile dependency (version
+`2.16.0`, upstream [JimLiu/baoyu-design](https://github.com/JimLiu/baoyu-design)).
+It is not a `dsh-totem` package dependency; install it with
+`dsh plugin --profile web-totem add dsh-claude-design@2.16.0`. The plugin
+provides the canvas editor and the `claude-design` skill.
+
 The claude-design editor listens on its own loopback port, so its printed
 `http://<host>:4720/...` link cannot be reached through the DSH domain. The
 `designProxy` option (default true, port `designEditorPort`, default 4720)
@@ -767,6 +781,13 @@ This makes dsh-claude-artifacts return the pathname
 `/design/<id>/o/<token>` instead of the absolute port URL, so the Artifacts
 page opens the editor through the same origin on every device. Rerun it after
 upgrading `dsh-claude-artifacts`, then restart DSH.
+
+The repository's `designs/` directory is local design output, not package
+content; a clone does not carry it. The editor canvas itself is written by the
+plugin into the project's design artifacts. See
+[docs/operations.md](docs/operations.md#design-editor-proxy) for the runtime
+requirements and [docs/new-machine.md](docs/new-machine.md) for the profile
+dependency.
 
 ## Upgrade DSH
 

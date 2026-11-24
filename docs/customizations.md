@@ -246,8 +246,10 @@ These are not shipped in the repository. They live in
   Aster, Context7, Chrome DevTools, shadcn, Trivy, and disabled templates for
   Semgrep, Sentry, Postgres, Figma, Supabase, Neon, and Burp.
 - UI rows: general settings, chat, theme, connection, subagent model selection.
-- Release approvals tracker: URL/token in
-  `~/.local/share/totem/approvals.json` (or `DSH_N8N_URL`/`DSH_N8N_TOKEN`).
+- Release approvals tracker:
+  [emiliano-go/github-release-tracker](https://github.com/emiliano-go/github-release-tracker);
+  URL/token in `~/.local/share/totem/approvals.json` (or
+  `DSH_N8N_URL`/`DSH_N8N_TOKEN`).
 
 The dated MCP/skill installation record is
 [mcp-and-skills-install.md](mcp-and-skills-install.md).
