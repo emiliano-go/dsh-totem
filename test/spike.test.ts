@@ -46,6 +46,20 @@ describe('ranking', () => {
     expect(ranking[0]?.id).toBe('c2')
   })
 
+  test('a non-zero count proves a pass criterion', () => {
+    const ranking = rank([
+      candidate('fast', { p95_ms: 1, deps: 1, secure: 2 }),
+      candidate('slow', { p95_ms: 500, deps: 4, secure: true }),
+    ], criteria)
+    expect(ranking[0]?.id).toBe('fast')
+    expect(ranking.every(entry => entry.qualified)).toBe(true)
+  })
+
+  test('a zero count fails a pass criterion', () => {
+    const ranking = rank([candidate('none', { p95_ms: 1, deps: 1, secure: 0 })], criteria)
+    expect(ranking[0]?.qualified).toBe(false)
+  })
+
   test('a failed pass criterion disqualifies even the fastest', () => {
     const ranking = rank([
       candidate('fast', { p95_ms: 1, deps: 1, secure: false }),
@@ -83,6 +97,22 @@ describe('measurements', () => {
 
   test('non-numeric values are dropped', () => {
     expect(readMeasurements('{"a": 1, "b": "x", "c": true}')).toEqual({ a: 1, c: true })
+  })
+
+  test('an indented object is still a measurement', () => {
+    expect(readMeasurements('{\n  "recall5": 1,\n  "p95_ms": 0.07,\n  "indexed": 20000\n}\n')).toEqual({
+      recall5: 1,
+      p95_ms: 0.07,
+      indexed: 20000,
+    })
+  })
+
+  test('an object printed after noise is found', () => {
+    expect(readMeasurements('building index...\ndone\n{"p95_ms": 3}')).toEqual({ p95_ms: 3 })
+  })
+
+  test('nested objects do not confuse the scan', () => {
+    expect(readMeasurements('{"a": 1, "detail": {"b": 2}, "c": 3}')).toEqual({ a: 1, c: 3 })
   })
 
   test('no JSON means no measurements', () => {

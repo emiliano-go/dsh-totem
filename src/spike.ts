@@ -109,7 +109,11 @@ export function buildBrief(input: {
       '```',
     )
   }
-  lines.push(``, `Keys it will read: ${input.criteria.map(criterion => criterion.name).join(', ')} (plus files and loc, computed by the harness).`)
+  lines.push(
+    ``,
+    `Keys it will read: ${input.criteria.map(criterion => criterion.name).join(', ')} (plus files and loc, computed by the harness).`,
+    `Print exactly one JSON object (compact or indented, both are fine) with a number for every min/max key, and \`true\` or a non-zero count for every pass key. Anything else reads as "not measured" and disqualifies you.`,
+  )
   return lines.join('\n')
 }
 
@@ -162,7 +166,11 @@ export function rank(candidates: readonly SpikeCandidate[], criteria: readonly S
   for (const criterion of criteria) {
     if (criterion.direction === 'pass') {
       for (const entry of entries) {
-        if (entry.candidate.measurements?.[criterion.name] !== true) {
+        const value = entry.candidate.measurements?.[criterion.name]
+        // A pass criterion may be proved by the boolean or by a non-zero count:
+        // `indexed: 20000` is a stronger proof than `indexed: true`.
+        const satisfied = value === true || (typeof value === 'number' && value > 0)
+        if (!satisfied) {
           entry.qualified = false
           entry.reasons.push(`${criterion.name}: not satisfied`)
         }
@@ -200,19 +208,50 @@ export function rank(candidates: readonly SpikeCandidate[], criteria: readonly S
     .map(entry => ({ id: entry.candidate.id, score: entry.score, qualified: entry.qualified, reasons: entry.reasons }))
 }
 
-/** Read the last JSON object a measurement command printed. */
+/**
+ * Pull measurements out of a command's stdout.
+ *
+ * Three shapes occur in practice: one compact object on one line, a
+ * pretty-printed object spanning many lines, and a compact object printed after
+ * a line of noise. All three are measurements; only the first used to be read,
+ * which silently disqualified every candidate that formatted its JSON.
+ * @param stdout - the command's captured output.
+ */
 export function readMeasurements(stdout: string): Record<string, number | boolean> {
-  const lines = stdout.trim().split('\n').filter(line => line.trim().startsWith('{'))
-  for (const line of lines.reverse()) {
-    try {
-      const parsed = JSON.parse(line) as Record<string, unknown>
-      const clean: Record<string, number | boolean> = {}
-      for (const [key, value] of Object.entries(parsed)) {
-        if (typeof value === 'number' || typeof value === 'boolean') clean[key] = value
+  const settle = (value: unknown): Record<string, number | boolean> | undefined => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+    const clean: Record<string, number | boolean> = {}
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (typeof entry === 'number' || typeof entry === 'boolean') clean[key] = entry
+    }
+    return Object.keys(clean).length > 0 ? clean : undefined
+  }
+
+  const text = stdout.trim()
+  try {
+    const whole = settle(JSON.parse(text))
+    if (whole !== undefined) return whole
+  } catch {
+    // Not one object from start to finish; look for the last balanced object.
+  }
+
+  for (let end = text.lastIndexOf('}'); end >= 0; end = text.lastIndexOf('}', end - 1)) {
+    let depth = 0
+    for (let start = end; start >= 0; start -= 1) {
+      const char = text[start]
+      if (char === '}') depth += 1
+      else if (char === '{') {
+        depth -= 1
+        if (depth === 0) {
+          try {
+            const candidate = settle(JSON.parse(text.slice(start, end + 1)))
+            if (candidate !== undefined) return candidate
+          } catch {
+            // Keep walking back: this brace pair is not valid JSON.
+          }
+          break
+        }
       }
-      return clean
-    } catch {
-      continue
     }
   }
   return {}
@@ -339,15 +378,15 @@ export async function runSpike(
       }
       candidate.elapsedMs = Date.now() - started
       const stats = await inspectDir(dir)
-      results.push({
-        ...candidate,
-        ...stats,
-        files: stats.files,
-        loc: stats.loc,
-        ...(options.measure !== undefined && options.measure.trim().length > 0
-          ? { measurements: readMeasurements(await runCommand(options.measure, dir, Math.min(timeboxMs, 120_000)).catch(() => '')) }
-          : {}),
-      })
+      let measurements: Record<string, number | boolean> | undefined
+      if (options.measure !== undefined && options.measure.trim().length > 0) {
+        const raw = await runCommand(options.measure, dir, Math.min(timeboxMs, 120_000))
+        measurements = readMeasurements(raw)
+        if (Object.keys(measurements).length === 0 && candidate.error === undefined) {
+          candidate.error = 'the measurement command printed no JSON object'
+        }
+      }
+      results.push({ ...candidate, ...stats, files: stats.files, loc: stats.loc, ...measurements === undefined ? {} : { measurements } })
     }),
   )
 
