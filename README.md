@@ -304,6 +304,27 @@ deliberate: re-reading the code is what produces the second identical edit.
 gate has to enforce it, and every refusal names the exact failure so the
 experiment can target it.
 
+## Solution tournaments
+
+Choosing between approaches is the step an agent usually does in its head: it
+generates candidates, ranks them by self-assessment, and implements one. Every
+rejection is then a thought rather than an observation, which is how a better
+approach dies silently.
+
+`spike` replaces that with a tournament. Given a question, measurable criteria,
+and a measurement command, it builds three MVPs in disposable directories under
+`~/.dsh/totem/spikes/<id>/`, one per fixed angle (simplest thing that works,
+optimised for the first criterion, unconventional), then runs the same
+measurement inside each and ranks them arithmetically by per-criterion rank, with
+ties broken by criterion order and `pass` criteria disqualifying outright.
+
+The model writes the candidates; the harness owns how many there are, how long
+each may run (10 minutes, `spikeTimeoutMs`), what counts as better, which one
+wins, and the record. Each run is written to `run.json` with every elapsed time
+and a `timedOut` flag, so the budget can be tuned from data instead of taste.
+The caller gets a ranked table, the winner, and the instruction that deviating
+requires a one-line reason.
+
 ## Commands
 
 Registered when the profile mounts `dsh-commands`; a profile without a command

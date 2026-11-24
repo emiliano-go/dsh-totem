@@ -73,6 +73,8 @@ export interface TotemConfig {
   verifyGate: Volatile<boolean>
   /** Extra steps the gate may force per turn. */
   verifyGateNudges: Volatile<number>
+  /** Per-candidate timebox for a solution tournament, in milliseconds. */
+  spikeTimeoutMs: Volatile<number>
   /** Send a push notification when a turn finishes. */
   notifyTurnEnd: Volatile<boolean>
   /** Send a push notification when a tool approval is requested. */

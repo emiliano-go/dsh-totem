@@ -37,6 +37,7 @@ import { registerRecallTool } from './recall.ts'
 import { ConflictInbox } from './conflicts.ts'
 import { VerifyLane, VerifyStore } from './verify-lane.ts'
 import { RestartController } from './restart.ts'
+import { registerSpikeTool, SPIKE_PROMPT } from './spike.ts'
 import { evaluateTurn, GATE_PROMPT } from './verify-gate.ts'
 import { EXPLORE_PROMPT, ExploreGate, MUTATING_TOOLS } from './explore.ts'
 import { registerDesignProxy } from './design-proxy.ts'
@@ -159,6 +160,8 @@ export interface Config {
   restartCommand: Volatile<string>
   /** systemd user unit to restart when the host is supervised. */
   restartService: Volatile<string>
+  /** Per-candidate timebox for a solution tournament, in milliseconds. */
+  spikeTimeoutMs: Volatile<number>
   /** Local quiet window for silent reminders, e.g. "22:00-08:00"; empty disables it. */
   quietHours: Volatile<string>
   /** Force a turn that edited files to run a check before it may end. */
@@ -238,6 +241,7 @@ export const Config: z<Config> = z.object({
   verifyDisable: z.array(String).default([]).volatile(),
   restartCommand: z.string().default('dsh-totem').volatile(),
   restartService: z.string().default('dsh-totem.service').volatile(),
+  spikeTimeoutMs: z.number().step(1).min(60_000).default(600_000).volatile(),
   verifyGate: z.boolean().default(true).volatile(),
   verifyGateNudges: z.number().step(1).min(0).max(5).default(2).volatile(),
   exploreGate: z.boolean().default(true).volatile(),
@@ -299,6 +303,7 @@ export function resolveConfig(config: Config): TotemConfig {
     notifyApproval: config.notifyApproval,
     restartCommand: config.restartCommand,
     restartService: config.restartService,
+    spikeTimeoutMs: config.spikeTimeoutMs,
     quietHours: config.quietHours,
     distillTurn: config.distillTurn,
     distillTurnMinChars: config.distillTurnMinChars,
@@ -381,6 +386,12 @@ export function apply(ctx: Context, config: Config): void {
   const totem = new TotemService(ctx, resolved)
 
   ctx.systemPrompt.section({
+    name: 'totem:spike',
+    order: ctx.systemPrompt.getSectionOrder('TOOL_WORKFLOW') + 1,
+    text: SPIKE_PROMPT,
+  })
+
+  ctx.systemPrompt.section({
     name: 'totem:workflow',
     order: ctx.systemPrompt.getSectionOrder('TOOL_WORKFLOW'),
     text: MEMORY_PROMPT,
@@ -442,6 +453,7 @@ export function apply(ctx: Context, config: Config): void {
     ttlMs: totem.config.toolGateTtlMs,
     turns: totem.config.toolGateTurns,
   })
+  registerSpikeTool(ctx, totem)
   registerUserTools(ctx, totem)
   registerNotifyTool(ctx, totem)
   registerNotificationHooks(ctx, totem)
