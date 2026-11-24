@@ -113,6 +113,45 @@ token returns `503` with a setup hint; a timeout returns `504`.
 The Overview page renders approval cards and the sidebar carries an approval
 dot. Polling is shared, so both surfaces stay in step.
 
+## Subagent reasoning
+
+DSH exposes `reasoning_effort` on the `subagent` tool when `modelSelection` is
+enabled. The effort is part of the model capability, not a separate agent
+feature: a model whose catalog entry does not advertise it rejects the value.
+
+Hand-declared gateway models start with no reasoning capability. Declare the
+levels and the wire mapping only when the gateway actually serves them:
+
+```yaml
+- id: hungerg-free
+  name: HungerG Free
+  contextWindow: 1000000
+  maxTokens: 65536
+  reasoningEfforts:
+    off:
+    low: low
+    medium: medium
+    high: high
+    max: max
+  compat:
+    supportsReasoningEffort: true
+```
+
+The live profile declares HungerG's four levels and sets the default child
+route to `hungerg-free` at `max`. Per-call `provider`/`model`/
+`reasoning_effort` selection also requires the session's recorded model policy;
+without one, explicit selection is limited to the parent route. The fallback is
+the configured `tool-subagent` `agentOptions`, which needs no per-call
+selection.
+
+HungerG is listed with reasoning support by
+[OpenCode Go's model catalog](https://models.opencode.ai/providers/opencode-go/),
+and Qoder documents Low, Medium, High, and Max thinking levels in the
+[HungerG promotion notes](https://docs.qoder.com/events/hungerg-free). The
+declaration is what tells DSH about that capability; without it a hand-declared
+gateway model is treated as non-reasoning even though the upstream model
+supports it.
+
 ## Notifications, reminders, and watches
 
 `ntfy` and Telegram are configured on the Assistant **Notifications** tab.

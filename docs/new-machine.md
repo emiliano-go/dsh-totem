@@ -151,6 +151,14 @@ other local tokens. Replace machine-specific paths before booting:
 | `RBG_ALLOWED_ROOTS` | `/home/eclipse/Documents/GitHub:/tmp:/home/eclipse/Documents/Apps/Spacesuit` | new roots |
 | provider `apiKeyEnv` | `OPENCODE_GO_API_KEY` | same variable, new value |
 
+The provider catalog also declares per-model capabilities. In particular,
+`hungerg-free` needs its four reasoning levels and
+`compat.supportsReasoningEffort: true`; without them DSH treats the hand-declared
+model as non-reasoning and rejects `reasoning_effort`. OpenCode lists the model
+with reasoning support, and Qoder documents Low/Medium/High/Max:
+[OpenCode Go models](https://models.opencode.ai/providers/opencode-go/),
+[Qoder HungerG notes](https://docs.qoder.com/events/hungerg-free).
+
 Validate before booting:
 
 ```sh
