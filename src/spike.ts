@@ -25,19 +25,31 @@ export interface SpikeCriterion {
   /** `pass` is a hard gate: a candidate that fails it is disqualified. */
   readonly direction: 'min' | 'max' | 'pass'
   readonly weight: number
+  /** Disqualify above this value, whatever the direction. */
+  readonly atMost?: number
+  /** Disqualify below this value, whatever the direction. */
+  readonly atLeast?: number
 }
 
-/** The three angles, fixed so the candidates are not three drafts of one idea. */
+/**
+ * @deprecated The caller now supplies the approaches; kept so a caller written
+ * against the fixed-angle form still imports.
+ */
 export const ANGLES = [
-  'the simplest thing that could possibly work: fewest moving parts, no new dependencies, boring and obviously correct',
-  'the one optimised for the first criterion above all else: accept extra complexity where it buys a better measured number',
-  'the unconventional one: a different architecture or data model from the other two, chosen for a property they ignore',
+  'the simplest thing that could possibly work',
+  'the one optimised for the first criterion above all else',
+  'the unconventional one',
 ] as const
+
+/** The minimum and maximum number of approaches a caller may propose. */
+export const MIN_APPROACHES = 3
+export const MAX_APPROACHES = 5
 
 /** What one candidate produced. */
 export interface SpikeCandidate {
   readonly id: string
-  readonly angle: string
+  /** The approach this candidate was assigned to implement, verbatim. */
+  readonly approach: string
   readonly dir: string
   readonly elapsedMs: number
   /** True when the timebox stopped it; recorded so the budget can be tuned. */
@@ -77,14 +89,22 @@ export function parseCriteria(input: unknown): SpikeCriterion[] {
       throw new Error(`criteria[${index}] direction must be min, max or pass`)
     }
     const weight = typeof entry.weight === 'number' && Number.isFinite(entry.weight) && entry.weight > 0 ? entry.weight : 1
-    return { name, direction, weight }
+    const atMost = typeof entry.atMost === 'number' && Number.isFinite(entry.atMost) ? entry.atMost : undefined
+    const atLeast = typeof entry.atLeast === 'number' && Number.isFinite(entry.atLeast) ? entry.atLeast : undefined
+    return {
+      name,
+      direction,
+      weight,
+      ...atMost === undefined ? {} : { atMost },
+      ...atLeast === undefined ? {} : { atLeast },
+    }
   })
 }
 
-/** The brief every worker gets; identical except for its angle and its directory. */
+/** The brief every worker gets; identical except for its assigned approach and its directory. */
 export function buildBrief(input: {
   question: string
-  angle: string
+  approach: string
   criteria: SpikeCriterion[]
   measure?: string
   dir: string
@@ -97,10 +117,11 @@ export function buildBrief(input: {
     ``,
     `Question: ${input.question}`,
     ``,
-    `Your angle: ${input.angle}`,
+    `Your assigned approach — implement exactly this, do not substitute a different design:`,
+    `  ${input.approach}`,
     ``,
     `Work only inside ${input.dir} — use that absolute path for every file you create. Do not read or write the rest of the project repository.`,
-    `Build the smallest runnable MVP that settles this question from your angle — a few files, no polish, no tests beyond one smoke check.`,
+    `Build the smallest runnable MVP that settles this question for your assigned approach — a few files, no polish, no tests beyond one smoke check.`,
     `That directory is the deliverable: leave the MVP runnable, plus a RESULT.md saying what you chose and the dependencies.`,
     `You have ${Math.round(input.timeboxMs / 60_000)} minutes. A rough MVP that exists beats a careful one that does not.`,
   ]
@@ -133,7 +154,7 @@ export function buildBrief(input: {
 }
 
 /** Count source files and lines in a candidate directory. */
-export async function inspectDir(dir: string): Promise<{ files: number; loc: number }> {
+export async function inspectDir(dir: string): Promise<{ files: number; loc: number; deps: number }> {
   let files = 0
   let loc = 0
   const walk = async (current: string): Promise<void> => {
@@ -156,12 +177,19 @@ export async function inspectDir(dir: string): Promise<{ files: number; loc: num
     }
   }
   try {
-    if (!(await stat(dir)).isDirectory()) return { files: 0, loc: 0 }
+    if (!(await stat(dir)).isDirectory()) return { files: 0, loc: 0, deps: 0 }
     await walk(dir)
   } catch {
-    return { files: 0, loc: 0 }
+    return { files: 0, loc: 0, deps: 0 }
   }
-  return { files, loc }
+  let deps = 0
+  try {
+    const manifest = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as { dependencies?: Record<string, unknown> }
+    deps = Object.keys(manifest.dependencies ?? {}).length
+  } catch {
+    // No manifest: the MVP added no dependencies.
+  }
+  return { files, loc, deps }
 }
 
 /**
@@ -179,18 +207,35 @@ export function rank(candidates: readonly SpikeCandidate[], criteria: readonly S
     qualified: true,
   }))
   for (const criterion of criteria) {
+    const bounded = criterion.atMost !== undefined || criterion.atLeast !== undefined
     if (criterion.direction === 'pass') {
       for (const entry of entries) {
         const value = entry.candidate.measurements?.[criterion.name]
-        // A pass criterion may be proved by the boolean or by a non-zero count:
-        // `indexed: 20000` is a stronger proof than `indexed: true`.
-        const satisfied = value === true || (typeof value === 'number' && value > 0)
+        // A bound is the constraint itself; without one, a pass criterion is
+        // proved by `true` or by a non-zero count (`indexed: 20000` is proof).
+        const satisfied = bounded
+          ? typeof value === 'number'
+            && (criterion.atMost === undefined || value <= criterion.atMost)
+            && (criterion.atLeast === undefined || value >= criterion.atLeast)
+          : value === true || (typeof value === 'number' && value > 0)
         if (!satisfied) {
           entry.qualified = false
           entry.reasons.push(`${criterion.name}: not satisfied`)
         }
       }
       continue
+    }
+    if (bounded) {
+      for (const entry of entries) {
+        const value = entry.candidate.measurements?.[criterion.name]
+        const ok = typeof value === 'number'
+          && (criterion.atMost === undefined || value <= criterion.atMost)
+          && (criterion.atLeast === undefined || value >= criterion.atLeast)
+        if (!ok) {
+          entry.qualified = false
+          entry.reasons.push(`${criterion.name}: outside its bound`)
+        }
+      }
     }
     const present = entries.filter(entry => typeof entry.candidate.measurements?.[criterion.name] === 'number')
     const ordered = [...present].sort((a, b) => {
@@ -354,7 +399,8 @@ export async function runSpike(
     measure?: string
     harness?: string
     contract?: string
-    candidates?: number
+    /** The approaches the caller proposed; one worker implements each. */
+    approaches: readonly string[]
     timeboxMs?: number
     parent: unknown
     signal?: AbortSignal
@@ -362,8 +408,12 @@ export async function runSpike(
     workspace?: string
   },
 ): Promise<SpikeRun> {
+  const approaches = options.approaches.map(approach => approach.trim()).filter(approach => approach.length > 0)
+  if (approaches.length < MIN_APPROACHES) {
+    throw new Error(`propose at least ${MIN_APPROACHES} different approaches; the workers implement them, they do not invent them`)
+  }
+  if (approaches.length > MAX_APPROACHES) approaches.length = MAX_APPROACHES
   if (deps.subagents === undefined) throw new Error('the subagents service is not mounted; the tournament needs it to run candidates')
-  const candidates = Math.max(1, Math.min(options.candidates ?? 3, 5))
   const timeboxMs = options.timeboxMs ?? 600_000
   const id = `spike-${Date.now().toString(36)}`
   // Candidates live inside the session workspace, which is the only place the
@@ -374,14 +424,13 @@ export async function runSpike(
   const harnessSource = await resolveHarness(options.harness)
   const results: SpikeCandidate[] = []
   await Promise.all(
-    Array.from({ length: candidates }, async (_unused, index) => {
-      const angle = ANGLES[index % ANGLES.length] as string
+    approaches.map(async (approach, index) => {
       const dir = join(root, `${index + 1}`)
       await mkdir(dir, { recursive: true })
       const harnessed = harnessSource !== undefined && harnessSource.trim().length > 0
       const brief = buildBrief({
         question: options.question,
-        angle,
+        approach,
         criteria: options.criteria,
         measure: options.measure,
         dir,
@@ -401,7 +450,7 @@ export async function runSpike(
       const timer = setTimeout(() => controller.abort(new Error('timebox')), timeboxMs)
       const candidate: SpikeCandidate = {
         id: `c${index + 1}`,
-        angle,
+        approach,
         dir: relative(process.cwd(), dir),
         elapsedMs: 0,
         timedOut: false,
@@ -472,7 +521,7 @@ export async function runSpike(
 /** Render the record as the table the model and the human read. */
 export function renderSpike(run: SpikeRun): string {
   const lines = [`## ${run.id}: ${run.question}`, '']
-  lines.push(`| candidate | angle | time | files | loc | verdict |`)
+  lines.push(`| candidate | approach | time | files | loc | verdict |`)
   lines.push(`| --- | --- | --- | --- | --- | --- |`)
   for (const candidate of run.candidates) {
     const rank = run.ranking.find(entry => entry.id === candidate.id)
@@ -483,7 +532,7 @@ export function renderSpike(run: SpikeRun): string {
         : rank?.qualified === false
           ? 'disqualified'
           : candidate.id === run.winner ? 'winner' : 'qualified'
-    lines.push(`| ${candidate.id} | ${candidate.angle.slice(0, 60)}… | ${Math.round(candidate.elapsedMs / 1000)}s | ${candidate.files} | ${candidate.loc} | ${verdict} |`)
+    lines.push(`| ${candidate.id} | ${candidate.approach.slice(0, 60)}… | ${Math.round(candidate.elapsedMs / 1000)}s | ${candidate.files} | ${candidate.loc} | ${verdict} |`)
   }
   lines.push('')
   lines.push(`winner: ${run.winner ?? 'none qualified'} — implement this, or state in one line why you deviate.`)
@@ -526,7 +575,12 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
         type: 'string',
         description: 'The exact TypeScript interface each candidate must implement in impl.ts.',
       },
-      candidates: { type: 'number', description: 'How many MVPs to build (2-5, default 3).' },
+      approaches: {
+        type: 'array',
+        required: true,
+        description: 'The different approaches you want tested. Each is implemented by its own worker; three is the minimum, and the workers never invent their own.',
+        items: { type: 'string' },
+      },
       timeboxMinutes: { type: 'number', description: 'Per-candidate budget in minutes (default 10).' },
     },
     output: {
@@ -542,7 +596,7 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
       measure?: string
       harness?: string
       contract?: string
-      candidates?: number
+      approaches: string[]
       timeboxMinutes?: number
     }, exec: { agent?: unknown; signal?: AbortSignal }) {
       const criteria = parseCriteria(args.criteria)
@@ -550,10 +604,11 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
       const run = await runSpike({ subagents }, {
         question: args.question,
         criteria,
+        approaches: Array.isArray(args.approaches) ? args.approaches : [],
         ...args.measure === undefined ? {} : { measure: args.measure },
         ...args.harness === undefined ? {} : { harness: args.harness },
         ...args.contract === undefined ? {} : { contract: args.contract },
-        ...args.candidates === undefined ? {} : { candidates: args.candidates },
+
         timeboxMs: (args.timeboxMinutes ?? totem.config.spikeTimeoutMs.get() / 60_000) * 60_000,
         parent: exec.agent,
         workspace: (exec.agent as { session?: { header?: { cwd?: string } } } | undefined)?.session?.header?.cwd,
@@ -567,4 +622,4 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
 /** Prompt text stating when the tournament is expected. */
 export const SPIKE_PROMPT = `## Solution tournaments
 
-When a decision has more than one plausible answer — a storage strategy, a cache invalidation rule, an auth flow, a query shape — do not choose by reasoning alone: call \`spike\` with the question, the criteria that matter, and a measurement command. It builds three independent MVPs in disposable directories, measures all three with the same command, and returns a ranked table. Performance and security forks always go through it before implementation. Implementation follows the winner; deviating from it requires one line in the reply saying why, and every timeout is recorded so the budget can be tuned.`
+When a decision has more than one plausible answer — a storage strategy, a cache invalidation rule, an auth flow, a query shape — do not choose by reasoning alone: name at least three genuinely different approaches and call \`spike\` with them, the criteria that matter, and the measurement. Each approach is implemented by its own worker in a disposable directory, measured with one benchmark, and ranked; the workers implement your approaches, they never invent their own. Performance and security forks always go through it before implementation. Implementation follows the winner; deviating from it requires one line in the reply saying why, and every timeout is recorded so the budget can be tuned.`

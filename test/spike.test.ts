@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { ANGLES, buildBrief, inspectDir, parseCriteria, rank, readMeasurements, renderSpike, resolveHarness, runCommand } from '../src/spike.ts'
+import { MAX_APPROACHES, MIN_APPROACHES, buildBrief, inspectDir, parseCriteria, rank, readMeasurements, renderSpike, resolveHarness, runCommand, runSpike } from '../src/spike.ts'
 
 const criteria = [
   { name: 'p95_ms', direction: 'min' as const, weight: 1 },
@@ -12,7 +12,7 @@ const criteria = [
 ]
 
 function candidate(id: string, measurements: Record<string, number | boolean>) {
-  return { id, angle: ANGLES[0]!, dir: `/tmp/${id}`, elapsedMs: 1000, timedOut: false, files: 2, loc: 20, measurements }
+  return { id, approach: 'the simplest thing', dir: `/tmp/${id}`, elapsedMs: 1000, timedOut: false, files: 2, loc: 20, measurements }
 }
 
 describe('criteria validation', () => {
@@ -158,7 +158,7 @@ describe('the harness-owned benchmark', () => {
   test('a contract is stated in the brief and the worker is told not to bench itself', () => {
     const brief = buildBrief({
       question: 'q',
-      angle: ANGLES[0]!,
+      approach: 'the simplest thing',
       criteria,
       dir: '/tmp/a',
       timeboxMs: 600_000,
@@ -171,7 +171,7 @@ describe('the harness-owned benchmark', () => {
   })
 
   test('without a contract the measuring command is still described', () => {
-    const brief = buildBrief({ question: 'q', angle: ANGLES[0]!, criteria, dir: '/tmp/a', timeboxMs: 600_000, measure: 'bun run bench.ts' })
+    const brief = buildBrief({ question: 'q', approach: 'the simplest thing', criteria, dir: '/tmp/a', timeboxMs: 600_000, measure: 'bun run bench.ts' })
     expect(brief).toContain('bun run bench.ts')
   })
 
@@ -182,11 +182,47 @@ describe('the harness-owned benchmark', () => {
       criteria,
       timeboxMs: 600_000,
       comparable: false,
-      candidates: [{ id: 'c1', angle: 'a', dir: 'x', elapsedMs: 1, timedOut: false, files: 1, loc: 1, measurements: {} }],
+      candidates: [{ id: 'c1', approach: 'a', dir: 'x', elapsedMs: 1, timedOut: false, files: 1, loc: 1, measurements: {} }],
       ranking: [{ id: 'c1', score: 0, qualified: true, reasons: [] }],
       winner: 'c1',
     }
     expect(renderSpike(run as never)).toContain('may measure different workloads')
+  })
+})
+
+describe('the caller proposes the approaches', () => {
+  test('fewer than three approaches is rejected before anything runs', async () => {
+    await expect(runSpike({}, { question: 'q', criteria, approaches: ['only one'], parent: {} })).rejects.toThrow()
+  })
+
+  test('a bound disqualifies without needing a direction', () => {
+    const bounded = [
+      { name: 'peak_in_flight', direction: 'pass' as const, weight: 1, atMost: 8 },
+      { name: 'wall_ms', direction: 'min' as const, weight: 1 },
+    ]
+    const ranking = rank([
+      { id: 'pool8', approach: 'a', dir: 'x', elapsedMs: 1, timedOut: false, files: 1, loc: 1, measurements: { peak_in_flight: 8, wall_ms: 1250 } },
+      { id: 'pool16', approach: 'b', dir: 'y', elapsedMs: 1, timedOut: false, files: 1, loc: 1, measurements: { peak_in_flight: 16, wall_ms: 650 } },
+    ], bounded)
+    expect(ranking[0]?.id).toBe('pool8')
+    expect(ranking.find(entry => entry.id === 'pool16')?.qualified).toBe(false)
+  })
+
+  test('loc and deps are criteria like any other', () => {
+    const sizing = [
+      { name: 'loc', direction: 'min' as const, weight: 1 },
+      { name: 'deps', direction: 'min' as const, weight: 1 },
+    ]
+    const ranking = rank([
+      { id: 'big', approach: 'a', dir: 'x', elapsedMs: 1, timedOut: false, files: 1, loc: 400, measurements: { loc: 400, deps: 2 } },
+      { id: 'small', approach: 'b', dir: 'y', elapsedMs: 1, timedOut: false, files: 1, loc: 120, measurements: { loc: 120, deps: 0 } },
+    ], sizing)
+    expect(ranking[0]?.id).toBe('small')
+  })
+
+  test('constants are exported for the caller contract', () => {
+    expect(MIN_APPROACHES).toBe(3)
+    expect(MAX_APPROACHES).toBe(5)
   })
 })
 
@@ -209,9 +245,9 @@ describe('harness files', () => {
 })
 
 describe('the record', () => {
-  test('briefs differ by angle and forbid the project', () => {
-    const one = buildBrief({ question: 'q', angle: ANGLES[0]!, criteria, dir: '/tmp/a', timeboxMs: 600_000 })
-    const two = buildBrief({ question: 'q', angle: ANGLES[1]!, criteria, dir: '/tmp/b', timeboxMs: 600_000 })
+  test('briefs differ by approach and forbid the rest of the project', () => {
+    const one = buildBrief({ question: 'q', approach: 'the simplest thing', criteria, dir: '/tmp/a', timeboxMs: 600_000 })
+    const two = buildBrief({ question: 'q', approach: 'the unconventional one', criteria, dir: '/tmp/b', timeboxMs: 600_000 })
     expect(one).not.toBe(two)
     expect(one).toContain('use that absolute path for every file you create')
     expect(one).toContain('10 minutes')
@@ -225,8 +261,8 @@ describe('the record', () => {
       criteria,
       timeboxMs: 600_000,
       candidates: [
-        { id: 'c1', angle: 'a', dir: 'x', elapsedMs: 600_000, timedOut: true, files: 1, loc: 5, measurements: {} },
-        { id: 'c2', angle: 'b', dir: 'y', elapsedMs: 60_000, timedOut: false, files: 2, loc: 9, measurements: { p95_ms: 5, deps: 1, secure: true } },
+        { id: 'c1', approach: 'a', dir: 'x', elapsedMs: 600_000, timedOut: true, files: 1, loc: 5, measurements: {} },
+        { id: 'c2', approach: 'b', dir: 'y', elapsedMs: 60_000, timedOut: false, files: 2, loc: 9, measurements: { p95_ms: 5, deps: 1, secure: true } },
       ],
       ranking: [{ id: 'c2', score: 0, qualified: true, reasons: [] }, { id: 'c1', score: 0, qualified: false, reasons: ['p95_ms: missing'] }],
       winner: 'c2',
@@ -241,6 +277,6 @@ describe('the record', () => {
     writeFileSync(join(dir, 'a.ts'), 'let a = 1\nlet b = 2\n')
     writeFileSync(join(dir, 'RESULT.md'), '# result\n')
     const stats = await inspectDir(dir)
-    expect(stats).toEqual({ files: 2, loc: 2 })
+    expect(stats).toEqual({ files: 2, loc: 2, deps: 0 })
   })
 })

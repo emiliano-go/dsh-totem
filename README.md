@@ -311,12 +311,15 @@ generates candidates, ranks them by self-assessment, and implements one. Every
 rejection is then a thought rather than an observation, which is how a better
 approach dies silently.
 
-`spike` replaces that with a tournament. Given a question, measurable criteria,
-and a measurement command, it builds three MVPs in disposable directories under
-`~/.dsh/totem/spikes/<id>/`, one per fixed angle (simplest thing that works,
-optimised for the first criterion, unconventional), then runs the same
+`spike` replaces that with a tournament. Given a question, at least three
+genuinely different approaches, measurable criteria, and a measurement command, it builds three MVPs in disposable directories under
+`~/.dsh/totem/spikes/<id>/`, one per approach the caller proposed — the workers
+implement those approaches, they never invent their own, then runs the same
 measurement inside each and ranks them arithmetically by per-criterion rank, with
 ties broken by criterion order and `pass` criteria disqualifying outright.
+Criteria may carry `atMost`/`atLeast` bounds, and `loc`, `files` and `deps` are
+measured for every candidate, so a constraint belongs in the criteria instead of
+hidden in the benchmark.
 
 The model writes the candidates; the harness owns how many there are, how long
 each may run (10 minutes, `spikeTimeoutMs`), what counts as better, which one
