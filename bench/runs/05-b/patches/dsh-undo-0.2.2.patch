@@ -1,0 +1,94 @@
+--- /tmp/dsh-undo-orig/package/lib/domain.js	1985-10-26 05:15:00.000000000 -0300
++++ /tmp/dsh-undo-src/package/lib/domain.js	2026-11-19 16:56:04.797088192 -0300
+@@ -10,7 +10,7 @@
+  *
+  * @module dsh-undo
+  */
+-import { createAssistantMessage, createToolResultMessage, createUserMessage, } from '@deepseek-ai/dsh-llm';
++import { createAssistantMessage, createDeveloperMessage, createToolResultMessage, createUserMessage, } from '@deepseek-ai/dsh-llm';
+ /**
+  * Locate the newest visible message on the surface: the last node that
+  * derives to a non-null message, walking back over invisible markers
+@@ -20,7 +20,7 @@
+  */
+ export function lastVisibleMessage(session) {
+     const nodes = session.surface.nodes;
+-    const events = session.events;
++    const events = session.snapshotEvents();
+     for (let index = nodes.length - 1; index >= 0; index--) {
+         const seq = nodes[index];
+         if (seq === undefined)
+@@ -64,11 +64,12 @@
+     const turn = last.turn;
+     const shadowed = [];
+     const nodes = session.surface.nodes;
++    const events = session.snapshotEvents();
+     for (let index = nodes.length - 1; index >= 0; index--) {
+         const seq = nodes[index];
+         if (seq === undefined)
+             continue;
+-        const event = session.events[seq];
++        const event = events[seq];
+         if (event === undefined)
+             continue;
+         // Invisible markers (earlier undos) never participate in a range.
+@@ -108,12 +109,9 @@
+     if (first === undefined || last === undefined) {
+         throw new Error('undo marker requires a non-empty shadowed range');
+     }
+-    const step = currentStep(session.events);
+-    const message = createAssistantMessage({
+-        content: [],
+-        source: { provider, model },
+-    });
+-    return session.append('assistant/message', {
++    const step = currentStep(session.snapshotEvents());
++    const message = createDeveloperMessage({ content: [], source: { kind: 'dsh-undo' } });
++    return session.append('developer/message', {
+         turn: step?.turn ?? 0,
+         step: step?.step ?? 0,
+         message,
+@@ -134,7 +132,7 @@
+  * @returns how many events were restored.
+  */
+ export function appendRedoCopies(session, seqs) {
+-    const events = session.events;
++    const events = session.snapshotEvents();
+     let restored = 0;
+     for (const seq of seqs) {
+         const source = events[seq];
+@@ -149,7 +147,7 @@
+                         model: source.data.message.source.model,
+                     },
+                 });
+-                session.append('assistant/message', { turn: source.data.turn, step: source.data.step, message }, { surfaceOp: 'append', sourceEventSeqs: [seq] });
++                session.append('assistant/message', { turn: source.data.turn, step: source.data.step, message }, { surfaceOp: 'append' });
+                 restored += 1;
+                 break;
+             }
+--- /tmp/dsh-undo-orig/package/package.json	1985-10-26 05:15:00.000000000 -0300
++++ /tmp/dsh-undo-src/package/package.json	2026-11-19 16:56:09.625213832 -0300
+@@ -1,7 +1,7 @@
+ {
+   "name": "dsh-undo",
+   "description": "User-side undo/redo for DeepSeek Harness (dsh): the /undo command rolls the transcript back to before the last message and /redo restores it.",
+-  "version": "0.2.0",
++  "version": "0.2.0-totem.2",
+   "packageManager": "yarn@4.15.0",
+   "publishConfig": {
+     "access": "public"
+@@ -50,10 +50,10 @@
+   "license": "MIT",
+   "peerDependencies": {
+     "@deepseek-ai/cordis": "^4.0.1-rc.1",
+-    "@deepseek-ai/dsh-agent": "^0.1.0-rc.6",
+-    "@deepseek-ai/dsh-commands": "^0.1.0-rc.6",
+-    "@deepseek-ai/dsh-llm": "^0.1.0-rc.6",
+-    "@deepseek-ai/dsh-session": "^0.1.0-rc.6"
++    "@deepseek-ai/dsh-agent": ">=0.1.0-rc.6 <0.3.0",
++    "@deepseek-ai/dsh-commands": ">=0.1.0-rc.6 <0.3.0",
++    "@deepseek-ai/dsh-llm": ">=0.1.0-rc.6 <0.3.0",
++    "@deepseek-ai/dsh-session": ">=0.1.0-rc.6 <0.3.0"
+   },
+   "devDependencies": {
+     "@deepseek-ai/cordis": "^4.0.1-rc.1",
