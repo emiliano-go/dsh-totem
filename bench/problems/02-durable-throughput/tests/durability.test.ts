@@ -53,6 +53,10 @@ mock.module('node:fs', () => ({
     return disk.has(path)
   },
   mkdirSync(): void {},
+  rmSync(path: string): void {
+    disk.delete(path)
+    cache.delete(path)
+  },
 }))
 
 const crash = (): void => { cache.clear(); handles.clear() }

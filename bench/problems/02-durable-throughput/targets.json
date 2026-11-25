@@ -1,1 +1,1 @@
-{"min_puts_per_second": 1200, "durable_write_p99_ms": 12, "writes": 2000}
+{"min_puts_per_second": 1500, "durable_write_p99_ms": 12, "writes": 2000}

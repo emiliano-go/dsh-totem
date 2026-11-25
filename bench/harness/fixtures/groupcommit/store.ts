@@ -4,6 +4,7 @@ import { closeSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs
 import { join } from 'node:path'
 
 const BATCH = 16
+const FLUSH_MS = 2
 
 export async function openStore(path: string) {
   const file = join(path, 'log.ndjson')
@@ -18,7 +19,10 @@ export async function openStore(path: string) {
   } catch {}
   const fd = openSync(file, 'a')
   let waiting: (() => void)[] = []
+  let timer: ReturnType<typeof setTimeout> | undefined
   const flush = (): void => {
+    if (timer !== undefined) { clearTimeout(timer); timer = undefined }
+    if (waiting.length === 0) return
     fsyncSync(fd)
     const release = waiting
     waiting = []
@@ -31,6 +35,7 @@ export async function openStore(path: string) {
       return new Promise<void>(resolve => {
         waiting.push(resolve)
         if (waiting.length >= BATCH) flush()
+        else timer ??= setTimeout(flush, FLUSH_MS)
       })
     },
     get(key: string): string | undefined { return data.get(key) },
@@ -40,6 +45,7 @@ export async function openStore(path: string) {
       return new Promise<void>(resolve => {
         waiting.push(resolve)
         if (waiting.length >= BATCH) flush()
+        else timer ??= setTimeout(flush, FLUSH_MS)
       })
     },
     close(): void { if (waiting.length > 0) flush(); closeSync(fd) },
