@@ -309,6 +309,21 @@ export function runCommand(command: string, cwd: string, timeoutMs: number): Pro
   })
 }
 
+/**
+ * Resolve the `harness` argument: inline source, or `file:<path>` to read a
+ * benchmark kept on disk. Inline source has to survive being quoted into a
+ * tool call; a path does not, so a shared benchmark can be reused verbatim.
+ * @param source - inline source, a `file:` path, or undefined.
+ */
+export async function resolveHarness(source: string | undefined): Promise<string | undefined> {
+  if (source === undefined) return undefined
+  const trimmed = source.trim()
+  if (!trimmed.startsWith('file:')) return source
+  const path = trimmed.slice('file:'.length).trim()
+  if (path.length === 0) throw new Error('harness: file: needs a path')
+  return await readFile(path, 'utf8')
+}
+
 /** What the tool needs from the host. */
 export interface SpikeDeps {
   readonly subagents?: {
@@ -356,13 +371,14 @@ export async function runSpike(
   const workspace = options.workspace ?? process.cwd()
   const root = join(workspace, '.spike', id)
 
+  const harnessSource = await resolveHarness(options.harness)
   const results: SpikeCandidate[] = []
   await Promise.all(
     Array.from({ length: candidates }, async (_unused, index) => {
       const angle = ANGLES[index % ANGLES.length] as string
       const dir = join(root, `${index + 1}`)
       await mkdir(dir, { recursive: true })
-      const harnessed = options.harness !== undefined && options.harness.trim().length > 0
+      const harnessed = harnessSource !== undefined && harnessSource.trim().length > 0
       const brief = buildBrief({
         question: options.question,
         angle,
@@ -378,7 +394,7 @@ export async function runSpike(
         const commented = options.contract.trim().split('\n').map(line => `// ${line}`).join('\n')
         await writeFile(join(dir, 'impl.ts'), `// Implement the contract below. The harness imports this module.\n//\n${commented}\n`, 'utf8')
       }
-      if (harnessed) await writeFile(join(dir, 'bench.ts'), options.harness as string, 'utf8')
+      if (harnessed) await writeFile(join(dir, 'bench.ts'), harnessSource as string, 'utf8')
 
       const controller = new AbortController()
       const started = Date.now()
@@ -419,7 +435,7 @@ export async function runSpike(
       candidate.elapsedMs = Date.now() - started
       const stats = await inspectDir(dir)
       let measurements: Record<string, number | boolean> | undefined
-      if (harnessed) await writeFile(join(dir, 'bench.ts'), options.harness as string, 'utf8')
+      if (harnessed) await writeFile(join(dir, 'bench.ts'), harnessSource as string, 'utf8')
       const command = harnessed ? 'bun run bench.ts' : options.measure
       if (command !== undefined && command.trim().length > 0) {
         const raw = await runCommand(command, dir, Math.min(timeboxMs, 120_000))
@@ -441,7 +457,7 @@ export async function runSpike(
     id,
     question: options.question,
     criteria: options.criteria,
-    comparable: options.harness !== undefined && options.harness.trim().length > 0,
+    comparable: harnessSource !== undefined && harnessSource.trim().length > 0,
     ...options.measure === undefined ? {} : { measure: options.measure },
     timeboxMs,
     candidates: measured,
@@ -504,7 +520,7 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
       },
       harness: {
         type: 'string',
-        description: 'Source of the benchmark written as bench.ts into every candidate and restored before measuring, so all candidates share one instrument.',
+        description: 'Source of the benchmark written as bench.ts into every candidate and restored before measuring, so all candidates share one instrument. Pass `file:<path>` to read it from disk.',
       },
       contract: {
         type: 'string',

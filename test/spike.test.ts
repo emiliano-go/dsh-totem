@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { ANGLES, buildBrief, inspectDir, parseCriteria, rank, readMeasurements, renderSpike, runCommand } from '../src/spike.ts'
+import { ANGLES, buildBrief, inspectDir, parseCriteria, rank, readMeasurements, renderSpike, resolveHarness, runCommand } from '../src/spike.ts'
 
 const criteria = [
   { name: 'p95_ms', direction: 'min' as const, weight: 1 },
@@ -187,6 +187,24 @@ describe('the harness-owned benchmark', () => {
       winner: 'c1',
     }
     expect(renderSpike(run as never)).toContain('may measure different workloads')
+  })
+})
+
+describe('harness files', () => {
+  test('inline source passes through unchanged', async () => {
+    expect(await resolveHarness('echo hi')).toBe('echo hi')
+    expect(await resolveHarness(undefined)).toBeUndefined()
+  })
+
+  test('a file: path is read from disk', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spike-harness-'))
+    const path = join(dir, 'bench.ts')
+    writeFileSync(path, 'console.log(1)\n')
+    expect(await resolveHarness(`file:${path}`)).toBe('console.log(1)\n')
+  })
+
+  test('file: without a path is rejected', async () => {
+    await expect(resolveHarness('file:   ')).rejects.toThrow()
   })
 })
 
