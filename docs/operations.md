@@ -207,8 +207,16 @@ device cannot reach `http://<host>:4720`, so the Host proxies:
 - a WebSocket upgrade per canvas root.
 
 Canvas roots are discovered from the editor's artifact records; a watcher adds
-or removes upgrade routes as canvases open. The proxy is enabled by default
-(`designProxy: true`) and can be disabled if the editor is not installed.
+or removes upgrade routes as canvases open. The first request for a recorded
+canvas mounts it on the editor hub, so switching between canvases does not
+leave the old loopback URL or a 404. The installed artifact bundle is patched
+at startup if it still returns the absolute editor URL. The proxy is enabled by
+default (`designProxy: true`) and can be disabled if the editor is not
+installed.
+
+`generate_canvas_url` returns the same-origin URL for a canvas path, folder
+name, or recorded title. `designPublicUrl` defaults to
+`https://dsh.emiliano-go.com`.
 
 The repository's `designs/` folder is local output and is not shipped or
 committed; the canvas artifacts themselves are written by the editor into the

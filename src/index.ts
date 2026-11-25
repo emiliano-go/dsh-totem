@@ -40,7 +40,7 @@ import { RestartController } from './restart.ts'
 import { registerSpikeTool, SPIKE_PROMPT } from './spike.ts'
 import { evaluateTurn, GATE_PROMPT } from './verify-gate.ts'
 import { EXPLORE_PROMPT, ExploreGate, MUTATING_TOOLS } from './explore.ts'
-import { registerDesignProxy } from './design-proxy.ts'
+import { registerCanvasUrlTool, registerDesignProxy } from './design-proxy.ts'
 import { budgetFor, clipToTokens } from './budget.ts'
 import { TitlesService } from './titles.ts'
 
@@ -184,6 +184,8 @@ export interface Config {
   designProxy: boolean
   /** Loopback port of the claude-design editor. */
   designEditorPort: number
+  /** Public origin used by generated canvas URLs. */
+  designPublicUrl: string
 }
 
 /** Loader schema; every field is live so the Plugins page can edit it. */
@@ -253,6 +255,7 @@ export const Config: z<Config> = z.object({
   resumeCooldownMinutes: z.number().step(1).min(1).default(30),
   designProxy: z.boolean().default(true),
   designEditorPort: z.number().step(1).min(1).default(4720),
+  designPublicUrl: z.string().default('https://dsh.emiliano-go.com'),
 })
 
 export function resolveConfig(config: Config): TotemConfig {
@@ -526,7 +529,11 @@ export function apply(ctx: Context, config: Config): void {
     restart: restarter,
   })
   registerApprovalRoutes(ctx, { totem })
-  if (config.designProxy) registerDesignProxy(ctx, { port: config.designEditorPort })
+  if (config.designProxy) {
+    const design = { port: config.designEditorPort, publicUrl: config.designPublicUrl }
+    registerDesignProxy(ctx, design)
+    registerCanvasUrlTool(ctx, design)
+  }
   registerInterruptedTurnResume(ctx, {
     enabled: config.resumeInterrupted,
     windowMinutes: config.resumeWindowMinutes,

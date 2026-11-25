@@ -145,6 +145,7 @@ reloading because the draining process still answers `/totem/ping`.
 |---|---|---|---|
 | `designProxy` | `true` | no | Proxy the claude-design editor under the DSH origin at `/design/*`. |
 | `designEditorPort` | `4720` | no | Loopback port of the editor. |
+| `designPublicUrl` | `https://dsh.emiliano-go.com` | no | Public origin used by `generate_canvas_url`. |
 
 The proxy handles both the HTTP prefix and the editor's WebSocket upgrade, one
 upgrade route per canvas root.

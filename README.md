@@ -804,6 +804,19 @@ serves `/design/*` and proxies the editor's SSE WebSocket to
 `127.0.0.1:4720`. A canvas is registered for its exact page and
 `/__deck/events` path whenever its artifact record appears.
 
+The proxy mounts a canvas on the editor hub on first request, so a recorded
+canvas that is not the currently open one still resolves at
+`https://dsh.emiliano-go.com/design/<id>/`. The artifact link patch is applied
+at startup when the installed `dsh-claude-artifacts` bundle still returns the
+absolute loopback URL.
+
+Use the `generate_canvas_url` tool with a canvas path or recorded title to get
+the same-origin URL directly:
+
+```json
+{ "path": "/home/eclipse/Documents/GitHub/project/designs/canvas" }
+```
+
 ```sh
 bun run script/patch-design-links.ts
 ```

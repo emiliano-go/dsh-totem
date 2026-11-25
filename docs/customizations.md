@@ -106,6 +106,11 @@ image path and does not require a memory marker.
 `compaction_search` searches the current session's archived compacts. See
 [compaction.md](compaction.md).
 
+### Design
+
+`generate_canvas_url` returns the same-origin URL for a recorded
+claude-design canvas. It accepts a canvas path, folder name, or recorded title.
+
 ### Pipelines
 
 `sec_audit`, `site_audit`, and `pipeline_detail` are registered only when the
