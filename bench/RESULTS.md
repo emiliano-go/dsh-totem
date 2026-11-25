@@ -63,16 +63,25 @@ a user would report it and the fix's tests held back as the hidden suite.
 | arm | grade | note |
 | --- | --- | --- |
 | A reasoning only | pass 5/5 | first run discarded: the grader had left the hidden suite in the checkout, and the arm ran it |
-| B reasoning + MVPs | pending | |
+| B reasoning + MVPs | pass 5/5 | its own spike harness had a wrong expectation flag, so the ranking fell to `loc`; the arm caught it, fixed the harness, and implemented on correctness |
 
 Calibration: the pre-fix checkout fails the hidden suite and the same checkout
 with the real fix passes, so the oracle is a genuine FAIL_TO_PASS.
 
+## 05b — what the repository task showed
+
+Both arms fixed the same two defects and both pass. Arm B's tournament was
+misled by its *own* harness: a wrong expectation flag under-scored every
+candidate equally and the rendered table omitted the correctness criterion, so
+the decision fell to lines of code. The arm noticed, repaired the harness, and
+implemented on correctness. That is the second time an arm had to override its
+tournament, and the second time the cause was the criteria, not the designs.
+
 ## What this establishes
 
-Three problems, three ties, six arm runs, all graded by the same hidden suites:
-the reasoning arm matched the MVP arm every time, including on the problem built
-to separate them. The premise that reasoning would pick the comfortable design
+Five problems, five ties, ten arm runs, all graded by the same hidden suites:
+the reasoning arm matched the MVP arm every time, including on the problems built
+to separate them, and including the repository task with no design freedom. The premise that reasoning would pick the comfortable design
 was wrong twice over (fsync-per-write, then full scan).
 
 The MVP phase's observable contribution is not a better answer on familiar
