@@ -69,6 +69,24 @@ describe('ranking', () => {
     expect(ranking.find(entry => entry.id === 'fast')?.qualified).toBe(false)
   })
 
+  test('equal measurements share a rank instead of being split by order', () => {
+    const ranking = rank([
+      candidate('c1', { p95_ms: 10, deps: 3, secure: true }),
+      candidate('c2', { p95_ms: 10, deps: 3, secure: true }),
+      candidate('c3', { p95_ms: 10, deps: 3, secure: true }),
+    ], criteria)
+    expect(ranking.map(entry => entry.score)).toEqual([0, 0, 0])
+  })
+
+  test('a tie does not hand the lower score to the first candidate only', () => {
+    const ranking = rank([
+      candidate('slow-first', { p95_ms: 100, deps: 1, secure: true }),
+      candidate('fast-second', { p95_ms: 5, deps: 1, secure: true }),
+    ], criteria)
+    expect(ranking[0]?.id).toBe('fast-second')
+    expect(ranking[0]?.score).toBe(0)
+  })
+
   test('a missing measurement disqualifies rather than scoring zero', () => {
     const ranking = rank([
       candidate('silent', { secure: true }),

@@ -183,11 +183,19 @@ export function rank(candidates: readonly SpikeCandidate[], criteria: readonly S
       const right = b.candidate.measurements?.[criterion.name] as number
       return criterion.direction === 'min' ? left - right : right - left
     })
+    // Equal measurements share a rank. Assigning distinct ranks to a tie lets
+    // iteration order decide a criterion, which is the model's taste sneaking
+    // back in through the sort.
+    let rank = 0
+    let previous: number | undefined
     ordered.forEach((entry, index) => {
-      entry.score += index * criterion.weight
-      entry.ranks.push(index)
-      if (index === 0) {
-        entry.reasons.push(`${criterion.name}: best (${String(entry.candidate.measurements?.[criterion.name])})`)
+      const value = entry.candidate.measurements?.[criterion.name] as number
+      if (previous === undefined || value !== previous) rank = index
+      previous = value
+      entry.score += rank * criterion.weight
+      entry.ranks.push(rank)
+      if (rank === 0) {
+        entry.reasons.push(`${criterion.name}: best (${String(value)})`)
       }
     })
     for (const entry of entries) {
