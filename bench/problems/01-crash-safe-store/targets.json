@@ -1,0 +1,1 @@
+{"durable_write_p99_ms": 8, "reopen_after_1mib_ms": 150, "torn_records": 0, "min_puts_per_second": 250}
