@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 const ENTRY = process.env.STORE_ENTRY
-if (ENTRY === undefined) throw new Error('STORE_ENTRY must point at the solution store.ts')
+
 
 const TARGETS = JSON.parse(
   readFileSync(join(import.meta.dir, '..', 'targets.json'), 'utf8'),

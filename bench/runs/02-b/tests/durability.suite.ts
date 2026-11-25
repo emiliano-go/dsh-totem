@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from 'bun:test'
 
 const ENTRY = process.env.STORE_ENTRY
-if (ENTRY === undefined) throw new Error('STORE_ENTRY must point at the solution store.ts')
+
 
 // A crashable filesystem: writes land in a page cache, only fsync moves them to
 // disk, and a crash discards the cache. SIGKILL cannot test durability because
