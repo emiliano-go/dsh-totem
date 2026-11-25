@@ -113,9 +113,34 @@ solved this instance. Arm B's first spike attempt emitted no measurement again â
 `harness:file:` with no runner defaulted to `bun run bench.ts` on a Python task;
 `spike` now infers `python3 bench.py` / `bash bench.sh` from the harness name.
 
+## 08 Terminal-Bench: regex-chess
+
+Write `/app/re.json`, a list of `[regex, replacement]` pairs that enumerate every
+legal chess move from a FEN. Expert estimate 24 hours; the official verifier
+replays four real games and takes 5 minutes per run.
+
+| arm | approach | pairs | verifier | grade |
+| --- | --- | --- | --- | --- |
+| A reasoning only | fixed-width line, absolute-offset move patterns, king-attack post-filter | 6301 | 4 passed / 71.8s | pass |
+| B reasoning + MVPs | same family, castling availability probed on the seed line, layered per-move patterns | 4963 | 4 passed / 45.9s | pass |
+
+Arm B's spike ranked chained relative walkers first and it implemented the
+absolute-offset family anyway, for layered testability â€” the third time an arm
+overruled its own ranking on grounds the ranking could not express.
+
+## 09 Terminal-Bench: feal-linear-cryptanalysis
+
+Recover a FEAL-like cipher's four round keys from 32 known plaintexts and decrypt
+100 ciphertexts. Expert estimate 16 hours.
+
+| arm | approach | verifier | grade |
+| --- | --- | --- | --- |
+| A reasoning only | noticed F is byte-wise invertible, inverted each Feistel round in closed form, then a 2^20 hash join instead of 2^40 meet-in-the-middle | 1 passed | pass |
+| B reasoning + MVPs | running | | |
+
 ## What this establishes
 
-Seven problems, seven ties, fourteen arm runs, all graded by the same hidden suites:
+Eight problems, eight ties, sixteen arm runs, all graded by the same hidden suites:
 the reasoning arm matched the MVP arm every time, including on the problems built
 to separate them, and including the repository task with no design freedom. The premise that reasoning would pick the comfortable design
 was wrong twice over (fsync-per-write, then full scan).
