@@ -40,13 +40,20 @@ exactly what reasoning is good at.
 | arm | design | grade |
 | --- | --- | --- |
 | A reasoning only | W-TinyLFU: 1% window, SLRU 20/80, count-min admission, aging | pass |
-| B reasoning + MVPs | pending | — |
+| B reasoning + MVPs | spike ranked SLRU > W-TinyLFU > LFU > LRU; implemented **W-TinyLFU** anyway, on the grounds that only hit rate is graded | pass |
 
 The trace mixes skewed popularity with sequential scans, and LRU fails it by 8.4
 points against a two-queue fixture. Arm A nevertheless reasoned to a design that
 resists scans — its own traces put it 8-9 points above LRU — without any
 tournament. The distinguishing fact it used was in the spec: the workload has
 periodic scans.
+
+Arm B's tournament over-ranked SLRU because its own criterion set included
+throughput, which the graded objective ignores; it then implemented the
+hit-rate winner instead of the score winner, and said so. The tool ranked, the
+arm decided, and the decision was right — which is the division of labour the
+tool is for, and also a reminder that a tournament is only as good as the
+criteria handed to it.
 
 ## What this establishes
 

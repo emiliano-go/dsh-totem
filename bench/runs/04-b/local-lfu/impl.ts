@@ -22,7 +22,7 @@ export function createCache(capacity: number): Cache {
   let buckets = new Map<number, Bucket>()
   let minFreq = 1
   let ticks = 0
-  const ageEvery = Math.max(4000, capacity * 10)
+  const ageEvery = Math.max(4000, capacity * 100)
 
   const detach = (e: Entry): void => {
     if (e.prev) e.prev.next = e.next
