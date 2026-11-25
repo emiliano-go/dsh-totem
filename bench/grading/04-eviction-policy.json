@@ -1,0 +1,6 @@
+{
+  "capacity": 512,
+  "min_hit_rate": 0.52,
+  "accesses": 200000,
+  "entry": "cache.ts"
+}

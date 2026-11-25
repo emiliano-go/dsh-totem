@@ -34,7 +34,10 @@ const briefSource = existsSync(brief) ? brief : join(root, 'harness', `arm-${arm
 copyFileSync(briefSource, join(runDir, 'brief.md'))
 copyFileSync(join(problemDir, 'spec.md'), join(runDir, 'spec.md'))
 
-const entry = problem.startsWith('03') ? 'index.ts' : 'store.ts'
+const grading = JSON.parse(
+  await Bun.file(join(root, 'grading', `${problem}.json`)).text(),
+) as { entry?: string }
+const entry = grading.entry ?? 'store.ts'
 writeFileSync(join(runDir, 'README.md'), [
   `# ${runName}`,
   '',
