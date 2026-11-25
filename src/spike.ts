@@ -140,7 +140,7 @@ export function buildBrief(input: {
       input.contract.trim(),
       '```',
       input.harnessed === true
-        ? `The benchmark is provided by the harness (${(input.runner ?? 'bun run bench.ts').trim()}), identical for every candidate, and restored before measuring. Do not edit it and do not write your own benchmark.`
+        ? `The benchmark is provided by the harness (${measurementCommand({ harnessed: true, ...input.runner === undefined ? {} : { runner: input.runner }, ...input.harness === undefined ? {} : { harness: input.harness } })}), identical for every candidate, and restored before measuring. Do not edit it and do not write your own benchmark.`
         : `Do not write your own benchmark if a bench.ts is present.`,
     )
   } else if (input.measure !== undefined && input.measure.trim().length > 0) {
@@ -378,10 +378,16 @@ export function readMeasurements(stdout: string): Record<string, number | boolea
  * project cannot be measured with `bun run bench.ts`.
  * @param input - whether a shared harness was supplied, its runner, and the fallback command.
  */
-export function measurementCommand(input: { harnessed: boolean; runner?: string; measure?: string }): string | undefined {
+export function measurementCommand(input: { harnessed: boolean; runner?: string; measure?: string; harness?: string }): string | undefined {
   if (input.harnessed) {
     const runner = (input.runner ?? '').trim()
-    return runner.length > 0 ? runner : 'bun run bench.ts'
+    if (runner.length > 0) return runner
+    // A harness written in Python or shell cannot be started with bun. Infer the
+    // interpreter from the file the caller supplied rather than failing silently.
+    const name = (input.harness ?? '').trim()
+    if (name.endsWith('.py')) return 'python3 bench.py'
+    if (name.endsWith('.sh')) return 'bash bench.sh'
+    return 'bun run bench.ts'
   }
   const measure = (input.measure ?? '').trim()
   return measure.length > 0 ? measure : undefined
@@ -550,7 +556,7 @@ export async function runSpike(
       const stats = await inspectDir(dir)
       let measurements: Record<string, number | boolean> | undefined
       if (harnessed) await writeFile(join(dir, 'bench.ts'), harnessSource as string, 'utf8')
-      const command = measurementCommand({ harnessed, ...options.runner === undefined ? {} : { runner: options.runner }, ...options.measure === undefined ? {} : { measure: options.measure } })
+      const command = measurementCommand({ harnessed, ...options.runner === undefined ? {} : { runner: options.runner }, ...options.measure === undefined ? {} : { measure: options.measure }, ...options.harness === undefined ? {} : { harness: options.harness } })
       let spread: Record<string, SpikeSpread> | undefined
       if (command !== undefined && command.trim().length > 0) {
         const numeric: Record<string, number[]> = {}

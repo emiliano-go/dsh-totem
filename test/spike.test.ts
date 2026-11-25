@@ -248,6 +248,11 @@ describe('the measurement command', () => {
     expect(measurementCommand({ harnessed: true })).toBe('bun run bench.ts')
   })
 
+  test('the interpreter is inferred from a python or shell harness', () => {
+    expect(measurementCommand({ harnessed: true, harness: 'bench.py' })).toBe('python3 bench.py')
+    expect(measurementCommand({ harnessed: true, harness: 'bench.sh' })).toBe('bash bench.sh')
+  })
+
   test('an unharnessed run uses the measure command', () => {
     expect(measurementCommand({ harnessed: false, measure: 'bun run bench.ts' })).toBe('bun run bench.ts')
     expect(measurementCommand({ harnessed: false })).toBeUndefined()

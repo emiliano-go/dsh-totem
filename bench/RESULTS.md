@@ -95,9 +95,27 @@ candidates were Python and `spike` assumed a TypeScript harness (`impl.ts`,
 the approaches with its own harness instead. `spike` now takes a `runner`, so a
 Python project can be measured with `python3 bench.py`.
 
+## 07 Terminal-Bench: db-wal-recovery
+
+A real Terminal-Bench task run as a real environment: official image, the task's
+`/app` mounted from disk, and the benchmark's own verifier available to the arm.
+The task is SQLite WAL recovery where the WAL is XOR-obfuscated; graded on
+`/app/recovered.json`. Calibration: pristine 7 failed, official solution 7 passed.
+
+| arm | approach | verifier | grade |
+| --- | --- | --- | --- |
+| A reasoning only | header inspection, found single-byte key `0x42`, decrypt, checkpoint, restore a valid WAL | 7 passed | pass |
+| B reasoning + MVPs | three approaches spiked (known-plaintext, brute-force key search, manual frame replay); winner was manual replay | 7 passed | pass |
+
+Both produced byte-identical `recovered.json` (11 records). This is the task class
+where the model's published score is 15.7% (Terminal-Bench-Science), and both arms
+solved this instance. Arm B's first spike attempt emitted no measurement again —
+`harness:file:` with no runner defaulted to `bun run bench.ts` on a Python task;
+`spike` now infers `python3 bench.py` / `bash bench.sh` from the harness name.
+
 ## What this establishes
 
-Six problems, six ties, twelve arm runs, all graded by the same hidden suites:
+Seven problems, seven ties, fourteen arm runs, all graded by the same hidden suites:
 the reasoning arm matched the MVP arm every time, including on the problems built
 to separate them, and including the repository task with no design freedom. The premise that reasoning would pick the comfortable design
 was wrong twice over (fsync-per-write, then full scan).
