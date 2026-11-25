@@ -627,6 +627,24 @@ export function renderSpike(run: SpikeRun): string {
     lines.push(`| ${candidate.id} | ${candidate.approach.slice(0, 60)}… | ${Math.round(candidate.elapsedMs / 1000)}s | ${candidate.files} | ${candidate.loc} | ${verdict} |`)
   }
   lines.push('')
+  // The scores alone cannot be audited; the numbers behind them have to travel
+  // with the verdict or the table is just an opinion with decimals.
+  const judged = run.criteria.filter(criterion => criterion.direction !== 'pass')
+  if (judged.length > 0) {
+    lines.push(`measurements (median over ${run.repeats ?? 1} run${(run.repeats ?? 1) === 1 ? '' : 's'}, min-max in brackets):`)
+    for (const candidate of run.candidates) {
+      const parts = judged.map(criterion => {
+        const value = candidate.measurements?.[criterion.name]
+        if (typeof value !== 'number') return `${criterion.name} —`
+        const spread = candidate.spread?.[criterion.name]
+        return spread === undefined
+          ? `${criterion.name} ${Number(value.toFixed(3))}`
+          : `${criterion.name} ${Number(value.toFixed(3))} [${Number(spread.min.toFixed(3))}–${Number(spread.max.toFixed(3))}]`
+      })
+      lines.push(`- ${candidate.id}: ${parts.join(', ')}`)
+    }
+    lines.push('')
+  }
   if (run.verdict === 'winner') {
     lines.push(`winner: ${run.winner} — implement this, or state in one line why you deviate.`)
   } else if (run.verdict === 'unresolved') {

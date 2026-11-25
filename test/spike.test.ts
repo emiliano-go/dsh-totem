@@ -289,6 +289,29 @@ describe('the record', () => {
     expect(text).toContain('winner: c2')
   })
 
+  test('the rendered record carries the numbers behind the scores', () => {
+    const run = {
+      id: 'spike-m',
+      question: 'q',
+      criteria,
+      timeboxMs: 600_000,
+      comparable: true,
+      repeats: 3,
+      pareto: ['c1'],
+      verdict: 'winner',
+      winner: 'c1',
+      candidates: [{
+        id: 'c1', approach: 'a', dir: 'x', elapsedMs: 1000, timedOut: false, files: 1, loc: 1,
+        measurements: { p95_ms: 12.345, deps: 2, secure: true },
+        spread: { p95_ms: { min: 11.1, max: 13.9, median: 12.345 } },
+      }],
+      ranking: [{ id: 'c1', score: 1, qualified: true, reasons: [] }],
+    }
+    const text = renderSpike(run as never)
+    expect(text).toContain('median over 3 runs')
+    expect(text).toContain('p95_ms 12.345 [11.1')
+  })
+
   test('directory inspection counts source files and skips docs', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'spike-inspect-'))
     writeFileSync(join(dir, 'a.ts'), 'let a = 1\nlet b = 2\n')
