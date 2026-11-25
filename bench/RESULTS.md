@@ -138,9 +138,20 @@ Recover a FEAL-like cipher's four round keys from 32 known plaintexts and decryp
 | A reasoning only | noticed F is byte-wise invertible, inverted each Feistel round in closed form, then a 2^20 hash join instead of 2^40 meet-in-the-middle | 1 passed | pass |
 | B reasoning + MVPs | running | | |
 
+## 10 Terminal-Bench: gpt2-codegolf
+
+Write a dependency-free C program under 5000 bytes that loads the 497 MB GPT-2
+124M checkpoint, tokenizes with vocab.bpe, and continues a prompt for 20 argmax
+tokens. Expert estimate 40 hours; the reference implementation is 3271 bytes.
+
+| arm | approach | bytes | verifier | grade |
+| --- | --- | --- | --- | --- |
+| A reasoning only | reverse-engineered the checkpoint as raw float32, recovered the tensor order empirically, found that the dump is name-sorted as strings so layers are h0,h1,h10,h11,h2,..., then a KV-cached forward pass and byte-level BPE | 4904 | 1 passed / 1.6s | pass |
+| B reasoning + MVPs | running | | | |
+
 ## What this establishes
 
-Eight problems, eight ties, sixteen arm runs, all graded by the same hidden suites:
+Nine problems, nine ties, eighteen arm runs, all graded by the same hidden suites:
 the reasoning arm matched the MVP arm every time, including on the problems built
 to separate them, and including the repository task with no design freedom. The premise that reasoning would pick the comfortable design
 was wrong twice over (fsync-per-write, then full scan).
