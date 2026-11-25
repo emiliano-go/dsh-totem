@@ -69,22 +69,35 @@ describe('ranking', () => {
     expect(ranking.find(entry => entry.id === 'fast')?.qualified).toBe(false)
   })
 
-  test('equal measurements share a rank instead of being split by order', () => {
+  test('identical measurements score identically instead of being split by order', () => {
     const ranking = rank([
       candidate('c1', { p95_ms: 10, deps: 3, secure: true }),
       candidate('c2', { p95_ms: 10, deps: 3, secure: true }),
       candidate('c3', { p95_ms: 10, deps: 3, secure: true }),
     ], criteria)
-    expect(ranking.map(entry => entry.score)).toEqual([0, 0, 0])
+    expect(new Set(ranking.map(entry => entry.score)).size).toBe(1)
   })
 
-  test('a tie does not hand the lower score to the first candidate only', () => {
+  test('a large win outweighs a tiny one', () => {
+    const magnitude = [
+      { name: 'wall_ms', direction: 'min' as const, weight: 1 },
+      { name: 'p99_ms', direction: 'min' as const, weight: 1 },
+    ]
+    const ranking = rank([
+      // 8x faster on wall, 0.7% slower on p99.
+      candidate('fast', { wall_ms: 1250, p99_ms: 50.79 }),
+      candidate('slow', { wall_ms: 10_000, p99_ms: 50.45 }),
+    ], magnitude)
+    expect(ranking[0]?.id).toBe('fast')
+  })
+
+  test('a clear win scores strictly higher, not merely first by luck', () => {
     const ranking = rank([
       candidate('slow-first', { p95_ms: 100, deps: 1, secure: true }),
       candidate('fast-second', { p95_ms: 5, deps: 1, secure: true }),
     ], criteria)
     expect(ranking[0]?.id).toBe('fast-second')
-    expect(ranking[0]?.score).toBe(0)
+    expect(ranking[0]!.score).toBeGreaterThan(ranking[1]!.score)
   })
 
   test('a missing measurement disqualifies rather than scoring zero', () => {
@@ -260,6 +273,10 @@ describe('the record', () => {
       question: 'q',
       criteria,
       timeboxMs: 600_000,
+      comparable: true,
+      repeats: 1,
+      pareto: ['c2'],
+      verdict: 'winner',
       candidates: [
         { id: 'c1', approach: 'a', dir: 'x', elapsedMs: 600_000, timedOut: true, files: 1, loc: 5, measurements: {} },
         { id: 'c2', approach: 'b', dir: 'y', elapsedMs: 60_000, timedOut: false, files: 2, loc: 9, measurements: { p95_ms: 5, deps: 1, secure: true } },

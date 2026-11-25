@@ -56,6 +56,8 @@ export interface SpikeCandidate {
   readonly timedOut: boolean
   readonly error?: string
   readonly measurements?: Record<string, number | boolean>
+  /** Min/max/median per criterion across the repeated runs. */
+  readonly spread?: Record<string, SpikeSpread>
   readonly files: number
   readonly loc: number
 }
@@ -71,6 +73,10 @@ export interface SpikeRun {
   readonly timeboxMs: number
   readonly candidates: SpikeCandidate[]
   readonly ranking: { id: string; score: number; qualified: boolean; reasons: string[] }[]
+  /** Non-dominated candidates, best-known set of defensible answers. */
+  readonly pareto: string[]
+  readonly repeats: number
+  readonly verdict: 'winner' | 'unresolved' | 'none'
   readonly winner?: string
 }
 
@@ -197,22 +203,78 @@ export async function inspectDir(dir: string): Promise<{ files: number; loc: num
  * compared without inventing normalisation. Lowest score wins; `pass` criteria
  * disqualify instead of scoring.
  */
+/** Distribution of one measured criterion across repeated runs. */
+export interface SpikeSpread {
+  readonly min: number
+  readonly max: number
+  readonly median: number
+}
+
+/** Middle value of a numeric sample. */
+export function median(values: readonly number[]): number {
+  if (values.length === 0) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0 ? (sorted[middle - 1]! + sorted[middle]!) / 2 : sorted[middle]!
+}
+
+/**
+ * Aggregate repeated measurements: the median is the value used for ranking,
+ * the min and max say how much of the difference could be noise.
+ */
+export function aggregate(samples: Record<string, number[]>): {
+  measurements: Record<string, number | boolean>
+  spread: Record<string, SpikeSpread>
+} {
+  const measurements: Record<string, number | boolean> = {}
+  const spread: Record<string, SpikeSpread> = {}
+  for (const [key, values] of Object.entries(samples)) {
+    if (values.length === 0) continue
+    const medianValue = median(values)
+    measurements[key] = medianValue
+    spread[key] = { min: Math.min(...values), max: Math.max(...values), median: medianValue }
+  }
+  return { measurements, spread }
+}
+
+/** True when `a` dominates `b` on every ranked criterion and is strictly better on one. */
+export function dominates(
+  a: Record<string, number | boolean> | undefined,
+  b: Record<string, number | boolean> | undefined,
+  criteria: readonly SpikeCriterion[],
+): boolean {
+  let strictly = false
+  for (const criterion of criteria) {
+    if (criterion.direction === 'pass') continue
+    const left = a?.[criterion.name]
+    const right = b?.[criterion.name]
+    if (typeof left !== 'number' || typeof right !== 'number') return false
+    const better = criterion.direction === 'min' ? left < right : left > right
+    const equal = left === right
+    if (!equal && !better) return false
+    if (better) strictly = true
+  }
+  return strictly
+}
+
+/**
+ * Rank by weighted ratio-to-best, disqualifying on bounds, `pass` criteria and
+ * missing measurements first. Ties at the top are reported rather than broken
+ * by iteration order.
+ */
 export function rank(candidates: readonly SpikeCandidate[], criteria: readonly SpikeCriterion[]): SpikeRun['ranking'] {
   const entries = candidates.map(candidate => ({
     candidate,
     score: 0,
-    /** Per-criterion rank, in criterion order: the tie-break. */
-    ranks: [] as number[],
     reasons: [] as string[],
     qualified: true,
   }))
+
   for (const criterion of criteria) {
     const bounded = criterion.atMost !== undefined || criterion.atLeast !== undefined
-    if (criterion.direction === 'pass') {
-      for (const entry of entries) {
-        const value = entry.candidate.measurements?.[criterion.name]
-        // A bound is the constraint itself; without one, a pass criterion is
-        // proved by `true` or by a non-zero count (`indexed: 20000` is proof).
+    for (const entry of entries) {
+      const value = entry.candidate.measurements?.[criterion.name]
+      if (criterion.direction === 'pass') {
         const satisfied = bounded
           ? typeof value === 'number'
             && (criterion.atMost === undefined || value <= criterion.atMost)
@@ -222,14 +284,15 @@ export function rank(candidates: readonly SpikeCandidate[], criteria: readonly S
           entry.qualified = false
           entry.reasons.push(`${criterion.name}: not satisfied`)
         }
+        continue
       }
-      continue
-    }
-    if (bounded) {
-      for (const entry of entries) {
-        const value = entry.candidate.measurements?.[criterion.name]
-        const ok = typeof value === 'number'
-          && (criterion.atMost === undefined || value <= criterion.atMost)
+      if (typeof value !== 'number') {
+        entry.qualified = false
+        entry.reasons.push(`${criterion.name}: missing`)
+        continue
+      }
+      if (bounded) {
+        const ok = (criterion.atMost === undefined || value <= criterion.atMost)
           && (criterion.atLeast === undefined || value >= criterion.atLeast)
         if (!ok) {
           entry.qualified = false
@@ -237,43 +300,26 @@ export function rank(candidates: readonly SpikeCandidate[], criteria: readonly S
         }
       }
     }
-    const present = entries.filter(entry => typeof entry.candidate.measurements?.[criterion.name] === 'number')
-    const ordered = [...present].sort((a, b) => {
-      const left = a.candidate.measurements?.[criterion.name] as number
-      const right = b.candidate.measurements?.[criterion.name] as number
-      return criterion.direction === 'min' ? left - right : right - left
-    })
-    // Equal measurements share a rank. Assigning distinct ranks to a tie lets
-    // iteration order decide a criterion, which is the model's taste sneaking
-    // back in through the sort.
-    let rank = 0
-    let previous: number | undefined
-    ordered.forEach((entry, index) => {
-      const value = entry.candidate.measurements?.[criterion.name] as number
-      if (previous === undefined || value !== previous) rank = index
-      previous = value
-      entry.score += rank * criterion.weight
-      entry.ranks.push(rank)
-      if (rank === 0) {
-        entry.reasons.push(`${criterion.name}: best (${String(value)})`)
-      }
-    })
+  }
+
+  for (const criterion of criteria) {
+    if (criterion.direction === 'pass') continue
+    const values = entries
+      .filter(entry => entry.qualified && typeof entry.candidate.measurements?.[criterion.name] === 'number')
+      .map(entry => entry.candidate.measurements?.[criterion.name] as number)
+    if (values.length === 0) continue
+    const best = criterion.direction === 'min' ? Math.min(...values) : Math.max(...values)
     for (const entry of entries) {
-      if (!present.includes(entry)) {
-        entry.qualified = false
-        entry.reasons.push(`${criterion.name}: missing`)
-      }
+      if (!entry.qualified) continue
+      const value = entry.candidate.measurements?.[criterion.name] as number
+      const ratio = best === 0 ? (value === 0 ? 1 : 0) : criterion.direction === 'min' ? best / value : value / best
+      entry.score += criterion.weight * ratio
     }
   }
-  const lexicographic = (a: number[], b: number[]): number => {
-    for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
-      if (a[index] !== b[index]) return a[index]! - b[index]!
-    }
-    return a.length - b.length
-  }
+
   return entries
-    .sort((a, b) => Number(b.qualified) - Number(a.qualified) || a.score - b.score || lexicographic(a.ranks, b.ranks))
-    .map(entry => ({ id: entry.candidate.id, score: entry.score, qualified: entry.qualified, reasons: entry.reasons }))
+    .sort((a, b) => Number(b.qualified) - Number(a.qualified) || b.score - a.score)
+    .map(entry => ({ id: entry.candidate.id, score: Number(entry.score.toFixed(4)), qualified: entry.qualified, reasons: entry.reasons }))
 }
 
 /**
@@ -401,6 +447,7 @@ export async function runSpike(
     contract?: string
     /** The approaches the caller proposed; one worker implements each. */
     approaches: readonly string[]
+    repeats?: number
     timeboxMs?: number
     parent: unknown
     signal?: AbortSignal
@@ -415,6 +462,7 @@ export async function runSpike(
   if (approaches.length > MAX_APPROACHES) approaches.length = MAX_APPROACHES
   if (deps.subagents === undefined) throw new Error('the subagents service is not mounted; the tournament needs it to run candidates')
   const timeboxMs = options.timeboxMs ?? 600_000
+  const repeats = Math.max(1, Math.min(options.repeats ?? 3, 10))
   const id = `spike-${Date.now().toString(36)}`
   // Candidates live inside the session workspace, which is the only place the
   // file sandbox lets a child write. Outside it they silently produce nothing.
@@ -486,14 +534,33 @@ export async function runSpike(
       let measurements: Record<string, number | boolean> | undefined
       if (harnessed) await writeFile(join(dir, 'bench.ts'), harnessSource as string, 'utf8')
       const command = harnessed ? 'bun run bench.ts' : options.measure
+      let spread: Record<string, SpikeSpread> | undefined
       if (command !== undefined && command.trim().length > 0) {
-        const raw = await runCommand(command, dir, Math.min(timeboxMs, 120_000))
-        measurements = readMeasurements(raw)
-        if (Object.keys(measurements).length === 0 && candidate.error === undefined) {
-          candidate.error = 'the measurement command printed no JSON object'
+        const numeric: Record<string, number[]> = {}
+        const booleans: Record<string, boolean> = {}
+        for (let round = 0; round < repeats; round += 1) {
+          const raw = await runCommand(command, dir, Math.min(timeboxMs, 120_000))
+          const reading = readMeasurements(raw)
+          if (Object.keys(reading).length === 0 && round === 0) {
+            candidate.error = candidate.error ?? 'the measurement command printed no JSON object'
+          }
+          for (const [key, value] of Object.entries(reading)) {
+            if (typeof value === 'number') (numeric[key] ??= []).push(value)
+            else booleans[key] = booleans[key] === true ? true : value
+          }
         }
+        const aggregated = aggregate(numeric)
+        measurements = { ...aggregated.measurements, ...booleans }
+        if (Object.keys(aggregated.spread).length > 0) spread = aggregated.spread
       }
-      results.push({ ...candidate, ...stats, files: stats.files, loc: stats.loc, ...measurements === undefined ? {} : { measurements } })
+      results.push({
+        ...candidate,
+        ...stats,
+        files: stats.files,
+        loc: stats.loc,
+        ...measurements === undefined ? {} : { measurements },
+        ...spread === undefined ? {} : { spread },
+      })
     }),
   )
 
@@ -502,6 +569,28 @@ export async function runSpike(
     measurements: { files: candidate.files, loc: candidate.loc, ...candidate.measurements },
   }))
   const ranking = rank(measured, options.criteria)
+  const qualified = ranking.filter(entry => entry.qualified)
+  const pareto = measured
+    .filter(candidate => qualified.some(entry => entry.id === candidate.id))
+    .filter(candidate => !measured.some(other =>
+      other.id !== candidate.id
+      && qualified.some(entry => entry.id === other.id)
+      && dominates(other.measurements, candidate.measurements, options.criteria)))
+    .map(candidate => candidate.id)
+  // How much of the gap between the top two could be noise: the median relative
+  // spread of every ranked criterion, weighted like the criteria themselves.
+  const ranked = options.criteria.filter(criterion => criterion.direction !== 'pass')
+  const noise = ranked.reduce((sum, criterion) => {
+    const ratios = measured
+      .map(candidate => candidate.spread?.[criterion.name])
+      .filter((entry): entry is SpikeSpread => entry !== undefined)
+      .map(entry => entry.median === 0 ? 0 : (entry.max - entry.min) / Math.abs(entry.median))
+    return sum + criterion.weight * median(ratios)
+  }, 0)
+  const first = qualified[0]
+  const second = qualified[1]
+  const undecided = first !== undefined && second !== undefined
+    && (first.score - second.score) <= Math.max(noise, 1e-9)
   const run: SpikeRun = {
     id,
     question: options.question,
@@ -511,7 +600,10 @@ export async function runSpike(
     timeboxMs,
     candidates: measured,
     ranking,
-    ...ranking[0]?.qualified === true ? { winner: ranking[0].id } : {},
+    pareto,
+    repeats,
+    verdict: first === undefined ? 'none' : undecided ? 'unresolved' : 'winner',
+    ...first === undefined || undecided ? {} : { winner: first.id },
   }
   await mkdir(root, { recursive: true })
   await writeFile(join(root, 'run.json'), JSON.stringify(run, null, 2), 'utf8')
@@ -535,7 +627,15 @@ export function renderSpike(run: SpikeRun): string {
     lines.push(`| ${candidate.id} | ${candidate.approach.slice(0, 60)}… | ${Math.round(candidate.elapsedMs / 1000)}s | ${candidate.files} | ${candidate.loc} | ${verdict} |`)
   }
   lines.push('')
-  lines.push(`winner: ${run.winner ?? 'none qualified'} — implement this, or state in one line why you deviate.`)
+  if (run.verdict === 'winner') {
+    lines.push(`winner: ${run.winner} — implement this, or state in one line why you deviate.`)
+  } else if (run.verdict === 'unresolved') {
+    const [a, b] = run.ranking.filter(entry => entry.qualified)
+    lines.push(`verdict: unresolved — ${a?.id} and ${b?.id} are within measurement noise (${a?.score} vs ${b?.score}, ${run.repeats} runs each); add a criterion that separates them instead of trusting the gap.`)
+  } else {
+    lines.push('winner: none qualified')
+  }
+  if ((run.pareto?.length ?? 0) > 0) lines.push(`pareto front: ${run.pareto.join(', ')}`)
   if (!run.comparable) lines.push('comparability: each candidate supplied its own benchmark, so the numbers may measure different workloads.')
   for (const entry of run.ranking) lines.push(`- ${entry.id}: score ${entry.score}${entry.reasons.length > 0 ? ` (${entry.reasons.join('; ')})` : ''}`)
   return lines.join('\n')
@@ -584,6 +684,7 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
         items: { type: 'string' },
       },
       timeboxMinutes: { type: 'number', description: 'Per-candidate budget in minutes (default 10).' },
+      repeats: { type: 'number', description: 'How many times the benchmark runs per candidate (default 3); the median ranks, the spread decides unresolved.' },
     },
     output: {
       schema: { type: 'json' },
@@ -600,6 +701,7 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
       contract?: string
       approaches: string[]
       timeboxMinutes?: number
+      repeats?: number
     }, exec: { agent?: unknown; signal?: AbortSignal }) {
       const criteria = parseCriteria(args.criteria)
       const subagents = (ctx.get('subagents') ?? undefined) as SpikeDeps['subagents']
