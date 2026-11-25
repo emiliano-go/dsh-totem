@@ -560,6 +560,8 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
             name: { type: 'string', required: true },
             direction: { type: 'string', enum: ['min', 'max', 'pass'], required: true },
             weight: { type: 'number' },
+            atMost: { type: 'number', description: 'Disqualify candidates above this value.' },
+            atLeast: { type: 'number', description: 'Disqualify candidates below this value.' },
           },
         },
       },
