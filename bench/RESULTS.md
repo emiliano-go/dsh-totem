@@ -55,6 +55,19 @@ arm decided, and the decision was right — which is the division of labour the
 tool is for, and also a reminder that a tournament is only as good as the
 criteria handed to it.
 
+## 05 repository issue (SWE-bench shape)
+
+Checkout of the repository at the commit before a real bug fix, with the issue as
+a user would report it and the fix's tests held back as the hidden suite.
+
+| arm | grade | note |
+| --- | --- | --- |
+| A reasoning only | pass 5/5 | first run discarded: the grader had left the hidden suite in the checkout, and the arm ran it |
+| B reasoning + MVPs | pending | |
+
+Calibration: the pre-fix checkout fails the hidden suite and the same checkout
+with the real fix passes, so the oracle is a genuine FAIL_TO_PASS.
+
 ## What this establishes
 
 Three problems, three ties, six arm runs, all graded by the same hidden suites:

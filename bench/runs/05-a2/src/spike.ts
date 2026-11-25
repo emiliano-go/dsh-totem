@@ -162,7 +162,11 @@ export function rank(candidates: readonly SpikeCandidate[], criteria: readonly S
   for (const criterion of criteria) {
     if (criterion.direction === 'pass') {
       for (const entry of entries) {
-        if (entry.candidate.measurements?.[criterion.name] !== true) {
+        const value = entry.candidate.measurements?.[criterion.name]
+        // A count is stronger proof than a boolean: any non-zero number
+        // satisfies a pass criterion; a zero count is still a failure.
+        const satisfied = value === true || (typeof value === 'number' && value !== 0)
+        if (!satisfied) {
           entry.qualified = false
           entry.reasons.push(`${criterion.name}: not satisfied`)
         }
@@ -202,12 +206,18 @@ export function rank(candidates: readonly SpikeCandidate[], criteria: readonly S
 
 /** Read the last JSON object a measurement command printed. */
 export function readMeasurements(stdout: string): Record<string, number | boolean> {
-  const lines = stdout.trim().split('\n').filter(line => line.trim().startsWith('{'))
-  for (const line of lines.reverse()) {
+  const text = stdout.trimEnd()
+  const end = text.lastIndexOf('}')
+  if (end === -1) return {}
+  // The object is the last thing printed, so walk back through candidate
+  // opening braces: noise or nested braces may precede it, and the object may
+  // be printed across several indented lines.
+  for (let start = text.lastIndexOf('{', end); start !== -1; start = text.lastIndexOf('{', start - 1)) {
     try {
-      const parsed = JSON.parse(line) as Record<string, unknown>
+      const parsed = JSON.parse(text.slice(start, end + 1)) as unknown
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) continue
       const clean: Record<string, number | boolean> = {}
-      for (const [key, value] of Object.entries(parsed)) {
+      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
         if (typeof value === 'number' || typeof value === 'boolean') clean[key] = value
       }
       return clean

@@ -146,6 +146,17 @@ export async function inspectDir(dir: string): Promise<{ files: number; loc: num
 }
 
 /**
+ * Whether a `pass` criterion is met.
+ *
+ * `true` is the literal proof, but a positive count is a stronger one: a
+ * benchmark that reports `indexed: 20000` has proved the property. A zero
+ * count reports nothing happened, so it still fails.
+ */
+export function passSatisfied(value: number | boolean | undefined): boolean {
+  return value === true || (typeof value === 'number' && Number.isFinite(value) && value > 0)
+}
+
+/**
  * Rank by per-criterion rank sums: scale-free, so a 42 ms p95 and 3 deps can be
  * compared without inventing normalisation. Lowest score wins; `pass` criteria
  * disqualify instead of scoring.
@@ -162,7 +173,7 @@ export function rank(candidates: readonly SpikeCandidate[], criteria: readonly S
   for (const criterion of criteria) {
     if (criterion.direction === 'pass') {
       for (const entry of entries) {
-        if (entry.candidate.measurements?.[criterion.name] !== true) {
+        if (!passSatisfied(entry.candidate.measurements?.[criterion.name])) {
           entry.qualified = false
           entry.reasons.push(`${criterion.name}: not satisfied`)
         }
@@ -200,20 +211,39 @@ export function rank(candidates: readonly SpikeCandidate[], criteria: readonly S
     .map(entry => ({ id: entry.candidate.id, score: entry.score, qualified: entry.qualified, reasons: entry.reasons }))
 }
 
-/** Read the last JSON object a measurement command printed. */
+/** Keep the number and boolean fields of a parsed JSON object. */
+function measurementFields(text: string): Record<string, number | boolean> | undefined {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return undefined
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
+  const clean: Record<string, number | boolean> = {}
+  for (const [key, value] of Object.entries(parsed)) {
+    if (typeof value === 'number' || typeof value === 'boolean') clean[key] = value
+  }
+  return clean
+}
+
+/**
+ * Read the last JSON object a measurement command printed.
+ *
+ * The benchmark may print noise first and may pretty-print the object across
+ * several lines, so a line that starts with `{` is not necessarily a whole
+ * object. Try the output as one object, then the last brace-delimited slice,
+ * then that slice with leading lines dropped until it parses.
+ */
 export function readMeasurements(stdout: string): Record<string, number | boolean> {
-  const lines = stdout.trim().split('\n').filter(line => line.trim().startsWith('{'))
-  for (const line of lines.reverse()) {
-    try {
-      const parsed = JSON.parse(line) as Record<string, unknown>
-      const clean: Record<string, number | boolean> = {}
-      for (const [key, value] of Object.entries(parsed)) {
-        if (typeof value === 'number' || typeof value === 'boolean') clean[key] = value
-      }
-      return clean
-    } catch {
-      continue
-    }
+  const whole = measurementFields(stdout.trim())
+  if (whole !== undefined) return whole
+  const match = /\{[\s\S]*\}/u.exec(stdout)
+  if (match === null) return {}
+  const lines = match[0].split('\n')
+  for (let index = 0; index < lines.length; index += 1) {
+    const parsed = measurementFields(lines.slice(index).join('\n').trim())
+    if (parsed !== undefined) return parsed
   }
   return {}
 }
