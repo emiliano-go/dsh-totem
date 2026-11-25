@@ -117,6 +117,7 @@ export function buildBrief(input: {
   timeboxMs: number
   contract?: string
   harnessed?: boolean
+  runner?: string
 }): string {
   const lines = [
     `# Solution tournament candidate`,
@@ -139,7 +140,7 @@ export function buildBrief(input: {
       input.contract.trim(),
       '```',
       input.harnessed === true
-        ? `bench.ts is provided by the harness, identical for every candidate, and restored before measuring. Do not edit it and do not write your own benchmark.`
+        ? `The benchmark is provided by the harness (${(input.runner ?? 'bun run bench.ts').trim()}), identical for every candidate, and restored before measuring. Do not edit it and do not write your own benchmark.`
         : `Do not write your own benchmark if a bench.ts is present.`,
     )
   } else if (input.measure !== undefined && input.measure.trim().length > 0) {
@@ -372,6 +373,21 @@ export function readMeasurements(stdout: string): Record<string, number | boolea
 }
 
 /**
+ * The command that measures a candidate. A harnessed run uses the shared
+ * benchmark, and the interpreter running it is the caller's business: a Python
+ * project cannot be measured with `bun run bench.ts`.
+ * @param input - whether a shared harness was supplied, its runner, and the fallback command.
+ */
+export function measurementCommand(input: { harnessed: boolean; runner?: string; measure?: string }): string | undefined {
+  if (input.harnessed) {
+    const runner = (input.runner ?? '').trim()
+    return runner.length > 0 ? runner : 'bun run bench.ts'
+  }
+  const measure = (input.measure ?? '').trim()
+  return measure.length > 0 ? measure : undefined
+}
+
+/**
  * Run a command in a directory with a hard timeout.
  *
  * `node:child_process`, not `Bun.spawn`: the host may be Node, where `Bun` does
@@ -484,6 +500,7 @@ export async function runSpike(
         dir,
         timeboxMs,
         ...options.contract === undefined ? {} : { contract: options.contract },
+        ...options.runner === undefined ? {} : { runner: options.runner },
         harnessed,
       })
       await writeFile(join(dir, 'BRIEF.md'), brief, 'utf8')
@@ -533,7 +550,7 @@ export async function runSpike(
       const stats = await inspectDir(dir)
       let measurements: Record<string, number | boolean> | undefined
       if (harnessed) await writeFile(join(dir, 'bench.ts'), harnessSource as string, 'utf8')
-      const command = harnessed ? 'bun run bench.ts' : options.measure
+      const command = measurementCommand({ harnessed, ...options.runner === undefined ? {} : { runner: options.runner }, ...options.measure === undefined ? {} : { measure: options.measure } })
       let spread: Record<string, SpikeSpread> | undefined
       if (command !== undefined && command.trim().length > 0) {
         const numeric: Record<string, number[]> = {}
@@ -687,6 +704,10 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
         type: 'string',
         description: 'Command run inside every candidate directory; it must print one JSON object with a value per criterion key. Ignored when harness is given.',
       },
+      runner: {
+        type: 'string',
+        description: 'Command that runs the shared harness, e.g. "python3 bench.py". Defaults to "bun run bench.ts".',
+      },
       harness: {
         type: 'string',
         description: 'Source of the benchmark written as bench.ts into every candidate and restored before measuring, so all candidates share one instrument. Pass `file:<path>` to read it from disk.',
@@ -717,6 +738,7 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
       measure?: string
       harness?: string
       contract?: string
+      runner?: string
       approaches: string[]
       timeboxMinutes?: number
       repeats?: number
@@ -729,6 +751,7 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
         approaches: Array.isArray(args.approaches) ? args.approaches : [],
         ...args.measure === undefined ? {} : { measure: args.measure },
         ...args.harness === undefined ? {} : { harness: args.harness },
+        ...args.runner === undefined ? {} : { runner: args.runner },
         ...args.contract === undefined ? {} : { contract: args.contract },
 
         timeboxMs: (args.timeboxMinutes ?? totem.config.spikeTimeoutMs.get() / 60_000) * 60_000,

@@ -77,9 +77,27 @@ the decision fell to lines of code. The arm noticed, repaired the harness, and
 implemented on correctness. That is the second time an arm had to override its
 tournament, and the second time the cause was the criteria, not the designs.
 
+## 06 performance optimization (SWE-fficiency task)
+
+The real `pandas-dev__pandas-57479` task from the SWE-fficiency dataset: the
+repository at its base commit, the expert's timing workload, and a bar of 1.3x
+speedup with the project's own tests green. Calibration: pristine 1.05x (fail),
+expert patch 2.20x (pass).
+
+| arm | change | speedup | tests | grade |
+| --- | --- | --- | --- | --- |
+| A reasoning only | `loc[:, k] = res_k` -> positional `isetitem` when the dtype is unchanged | **2.88x** | pass | pass |
+| B reasoning + MVPs | `loc[:, k] = res_k` -> `result[k] = res_k` for the unique-column case | **2.89x** | pass | pass |
+
+Both beat the expert patch. Arm B's tournament produced **no ranking**: its
+candidates were Python and `spike` assumed a TypeScript harness (`impl.ts`,
+`bun run bench.ts`), so every candidate failed to emit JSON and the arm ranked
+the approaches with its own harness instead. `spike` now takes a `runner`, so a
+Python project can be measured with `python3 bench.py`.
+
 ## What this establishes
 
-Five problems, five ties, ten arm runs, all graded by the same hidden suites:
+Six problems, six ties, twelve arm runs, all graded by the same hidden suites:
 the reasoning arm matched the MVP arm every time, including on the problems built
 to separate them, and including the repository task with no design freedom. The premise that reasoning would pick the comfortable design
 was wrong twice over (fsync-per-write, then full scan).

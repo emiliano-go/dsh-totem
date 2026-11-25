@@ -1,6 +1,8 @@
 {
   "task": "repo",
-  "hiddenTests": ["tests/measurement-hidden.test.ts"],
+  "hiddenTests": [
+    "tests/measurement-hidden.hidden.ts"
+  ],
   "command": "bun test test/measurement-hidden.test.ts",
   "fixSha": "0cd2b16",
   "parentSha": "100046f"

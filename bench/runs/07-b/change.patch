@@ -1,0 +1,20 @@
+diff --git i/pandas/core/generic.py w/pandas/core/generic.py
+index 7614951..32473ad 100644
+--- i/pandas/core/generic.py
++++ w/pandas/core/generic.py
+@@ -6972,11 +6972,10 @@ class NDFrame(PandasObject, indexing.IndexingMixin):
+                         #  was preserved.
+                         if isinstance(res_k, ABCSeries):
+                             # i.e. 'k' only shows up once in self.columns
+-                            if res_k.dtype == result[k].dtype:
+-                                result.loc[:, k] = res_k
+-                            else:
+-                                # Different dtype -> no way to do inplace.
+-                                result[k] = res_k
++                            # A direct column assignment is equivalent to
++                            #  result.loc[:, k] = res_k here (k is unique) but
++                            #  avoids the general .loc setitem machinery.
++                            result[k] = res_k
+                         else:
+                             # see test_fillna_dict_inplace_nonunique_columns
+                             locs = result.columns.get_loc(k)

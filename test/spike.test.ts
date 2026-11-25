@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { MAX_APPROACHES, MIN_APPROACHES, buildBrief, inspectDir, parseCriteria, rank, readMeasurements, renderSpike, resolveHarness, runCommand, runSpike } from '../src/spike.ts'
+import { MAX_APPROACHES, MIN_APPROACHES, buildBrief, measurementCommand, inspectDir, parseCriteria, rank, readMeasurements, renderSpike, resolveHarness, runCommand, runSpike } from '../src/spike.ts'
 
 const criteria = [
   { name: 'p95_ms', direction: 'min' as const, weight: 1 },
@@ -236,6 +236,21 @@ describe('the caller proposes the approaches', () => {
   test('constants are exported for the caller contract', () => {
     expect(MIN_APPROACHES).toBe(3)
     expect(MAX_APPROACHES).toBe(5)
+  })
+})
+
+describe('the measurement command', () => {
+  test('a harnessed run uses the caller runner, not bun', () => {
+    expect(measurementCommand({ harnessed: true, runner: 'python3 bench.py' })).toBe('python3 bench.py')
+  })
+
+  test('a harnessed run without a runner defaults to bun', () => {
+    expect(measurementCommand({ harnessed: true })).toBe('bun run bench.ts')
+  })
+
+  test('an unharnessed run uses the measure command', () => {
+    expect(measurementCommand({ harnessed: false, measure: 'bun run bench.ts' })).toBe('bun run bench.ts')
+    expect(measurementCommand({ harnessed: false })).toBeUndefined()
   })
 })
 

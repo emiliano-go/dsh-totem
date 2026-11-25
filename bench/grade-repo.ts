@@ -28,7 +28,10 @@ const target = resolve(solution)
 // Copy in, run, remove: a hidden suite left behind is a hidden suite the next
 // arm can read and run, which is exactly what happened once.
 mkdirSync(join(target, 'test'), { recursive: true })
-const planted = config.hiddenTests.map(file => join(target, 'test', file.split('/').pop() as string))
+// Hidden files are stored with a .hidden.ts suffix so the repository's own
+// test run never loads them; they are planted with a .test.ts name.
+const plantedName = (file: string): string => (file.split('/').pop() as string).replace(/\.hidden\.ts$/u, '.test.ts')
+const planted = config.hiddenTests.map(file => join(target, 'test', plantedName(file)))
 for (const [index, file] of config.hiddenTests.entries()) {
   copyFileSync(join(root, 'problems', problem, file), planted[index] as string)
 }
