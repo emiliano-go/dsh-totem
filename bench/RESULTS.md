@@ -25,20 +25,33 @@ lose the throughput floor — was wrong: arm A batched on its own initiative.
 
 ## 03 retrieval index (200k documents)
 
-| arm | design | grade |
-| --- | --- | --- |
-| A reasoning only | pending | — |
-| B reasoning + MVPs | spike ranked inverted+BM25 18 µs > bitset+TF-IDF 40 µs > full scan 145 µs; implemented inverted | pass |
+| arm | design | lines | grade |
+| --- | --- | --- | --- |
+| A reasoning only | inverted index, galloping intersection, BM25, bounded heap, prefix fallback | 320 | pass |
+| B reasoning + MVPs | spike ranked inverted+BM25 18 µs > bitset+TF-IDF 40 µs > full scan 145 µs; implemented inverted | 210 | pass |
 
-The tournament eliminated the full-scan design at 8x in its own harness — the
-same design the hidden suite rejects by 660x.
+Tie. The tournament eliminated the full-scan design at 8x in its own harness — the
+same design the hidden suite rejects by 660x — but the reasoning arm never
+proposed it: the inverted index is the textbook answer, and textbook answers are
+exactly what reasoning is good at.
 
 ## What this establishes
 
-Two problems, two ties. The MVP phase has not shown a correctness or performance
-advantage on either, and it costs three candidate agents plus a measurement
-round. Its observable contribution was ranking alternatives and hardening the
-winner (arm B's torn-tail resync and batch-rejection fix).
+Three problems, three ties, six arm runs, all graded by the same hidden suites:
+the reasoning arm matched the MVP arm every time, including on the problem built
+to separate them. The premise that reasoning would pick the comfortable design
+was wrong twice over (fsync-per-write, then full scan).
+
+The MVP phase's observable contribution is not a better answer on familiar
+ground, it is a *cheaper rejection*: it priced three designs in minutes and threw
+out the failing one before any code was written. It also hardened the winner
+afterwards, though those fixes (torn-tail resync, batch rejection, prefix
+fallback) came from the arm, not from the tournament.
+
+The honest reading: on problems whose correct answer is textbook, the tournament
+buys evidence and discarded alternatives, not better outcomes. It should only pay
+where the answer is *not* knowable from memory, which is the case none of these
+three problems actually exercised.
 
 ## Validity gaps, in order of importance
 

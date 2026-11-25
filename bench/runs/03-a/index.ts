@@ -29,9 +29,26 @@ export interface Index {
   search(query: string, k: number): string[]
 }
 
-const TOKEN_RE = /[a-z0-9]+/g
 const K1 = 1.2
 const B = 0.75
+
+const isTokChar = (c: number): boolean =>
+  (c >= 97 && c <= 122) || (c >= 48 && c <= 57)
+
+/** Lowercase ASCII-word tokeniser, identical for documents and queries. */
+function tokenize(text: string): string[] {
+  const s = text.toLowerCase()
+  const n = s.length
+  const out: string[] = []
+  let i = 0
+  while (i < n) {
+    if (!isTokChar(s.charCodeAt(i))) { i++; continue }
+    const start = i
+    while (i < n && isTokChar(s.charCodeAt(i))) i++
+    out.push(s.slice(start, i))
+  }
+  return out
+}
 
 /**
  * Binary-search `doc` in a flat `[doc, tf, ...]` list, starting at entry `from`
@@ -98,20 +115,23 @@ class RetrievalIndex implements Index {
 
     const lower = text.toLowerCase()
     const postings = this.postings
+    const n = lower.length
     let count = 0
-
-    TOKEN_RE.lastIndex = 0
-    let m: RegExpExecArray | null
-    while ((m = TOKEN_RE.exec(lower)) !== null) {
-      const tok = m[0]
+    let i = 0
+    while (i < n) {
+      if (!isTokChar(lower.charCodeAt(i))) { i++; continue }
+      const start = i
+      i++
+      while (i < n && isTokChar(lower.charCodeAt(i))) i++
+      const tok = lower.slice(start, i)
       count++
       const list = postings.get(tok)
       if (list === undefined) {
         postings.set(tok, [doc, 1])
       } else {
-        const n = list.length
+        const len = list.length
         // Same doc repeats are always appended at the tail (docIds ascend).
-        if (n !== 0 && list[n - 2] === doc) list[n - 1]++
+        if (len !== 0 && list[len - 2] === doc) list[len - 1]++
         else list.push(doc, 1)
       }
     }
@@ -128,12 +148,9 @@ class RetrievalIndex implements Index {
     const N = this.liveCount
     if (N === 0) return []
 
-    const q = query.toLowerCase()
     const terms: string[] = []
-    TOKEN_RE.lastIndex = 0
-    let m: RegExpExecArray | null
-    while ((m = TOKEN_RE.exec(q)) !== null) {
-      if (terms.indexOf(m[0]) < 0) terms.push(m[0])
+    for (const t of tokenize(query)) {
+      if (terms.indexOf(t) < 0) terms.push(t)
     }
 
     // Empty query: every document trivially contains every (zero) term.
@@ -259,6 +276,9 @@ class RetrievalIndex implements Index {
     for (let i = 0; i < terms.length; i++) {
       if (lists[i] !== undefined) continue
       const prefix = terms[i]
+      // A one-character prefix would fan out over half the vocabulary; the
+      // fallback is for morphological variants, not for wildcards.
+      if (prefix.length < 2) return false
 
       let lo = 0
       let hi = st.length
@@ -269,10 +289,13 @@ class RetrievalIndex implements Index {
       }
 
       const merged = new Map<number, number>()
+      let budget = 500_000 // entries scanned before giving up
       for (let j = lo; j < st.length; j++) {
         const t = st[j]
         if (!t.startsWith(prefix)) break
         const l = this.postings.get(t)!
+        budget -= l.length >> 1
+        if (budget < 0) return false
         for (let p = 0; p < l.length; p += 2) {
           const d = l[p]
           merged.set(d, (merged.get(d) ?? 0) + l[p + 1])
