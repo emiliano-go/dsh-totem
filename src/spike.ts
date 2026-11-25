@@ -54,6 +54,8 @@ export interface SpikeRun {
   readonly question: string
   readonly criteria: SpikeCriterion[]
   readonly measure?: string
+  /** True when one harness-owned benchmark measured every candidate. */
+  readonly comparable: boolean
   readonly timeboxMs: number
   readonly candidates: SpikeCandidate[]
   readonly ranking: { id: string; score: number; qualified: boolean; reasons: string[] }[]
@@ -87,6 +89,8 @@ export function buildBrief(input: {
   measure?: string
   dir: string
   timeboxMs: number
+  contract?: string
+  harnessed?: boolean
 }): string {
   const lines = [
     `# Solution tournament candidate`,
@@ -97,10 +101,21 @@ export function buildBrief(input: {
     ``,
     `Work only inside ${input.dir} — use that absolute path for every file you create. Do not read or write the rest of the project repository.`,
     `Build the smallest runnable MVP that settles this question from your angle — a few files, no polish, no tests beyond one smoke check.`,
-    `That directory is the deliverable: leave the MVP runnable, plus a RESULT.md saying what you chose, the dependencies, and what you measured.`,
+    `That directory is the deliverable: leave the MVP runnable, plus a RESULT.md saying what you chose and the dependencies.`,
     `You have ${Math.round(input.timeboxMs / 60_000)} minutes. A rough MVP that exists beats a careful one that does not.`,
   ]
-  if (input.measure !== undefined && input.measure.trim().length > 0) {
+  if (input.contract !== undefined && input.contract.trim().length > 0) {
+    lines.push(
+      ``,
+      `The harness owns the benchmark. Implement your approach in impl.ts satisfying exactly this contract:`,
+      '```ts',
+      input.contract.trim(),
+      '```',
+      input.harnessed === true
+        ? `bench.ts is provided by the harness, identical for every candidate, and restored before measuring. Do not edit it and do not write your own benchmark.`
+        : `Do not write your own benchmark if a bench.ts is present.`,
+    )
+  } else if (input.measure !== undefined && input.measure.trim().length > 0) {
     lines.push(
       ``,
       `The harness will run this inside your directory and read one JSON object from stdout:`,
@@ -322,6 +337,8 @@ export async function runSpike(
     question: string
     criteria: SpikeCriterion[]
     measure?: string
+    harness?: string
+    contract?: string
     candidates?: number
     timeboxMs?: number
     parent: unknown
@@ -345,8 +362,23 @@ export async function runSpike(
       const angle = ANGLES[index % ANGLES.length] as string
       const dir = join(root, `${index + 1}`)
       await mkdir(dir, { recursive: true })
-      const brief = buildBrief({ question: options.question, angle, criteria: options.criteria, measure: options.measure, dir, timeboxMs })
+      const harnessed = options.harness !== undefined && options.harness.trim().length > 0
+      const brief = buildBrief({
+        question: options.question,
+        angle,
+        criteria: options.criteria,
+        measure: options.measure,
+        dir,
+        timeboxMs,
+        ...options.contract === undefined ? {} : { contract: options.contract },
+        harnessed,
+      })
       await writeFile(join(dir, 'BRIEF.md'), brief, 'utf8')
+      if (options.contract !== undefined && options.contract.trim().length > 0) {
+        const commented = options.contract.trim().split('\n').map(line => `// ${line}`).join('\n')
+        await writeFile(join(dir, 'impl.ts'), `// Implement the contract below. The harness imports this module.\n//\n${commented}\n`, 'utf8')
+      }
+      if (harnessed) await writeFile(join(dir, 'bench.ts'), options.harness as string, 'utf8')
 
       const controller = new AbortController()
       const started = Date.now()
@@ -387,8 +419,10 @@ export async function runSpike(
       candidate.elapsedMs = Date.now() - started
       const stats = await inspectDir(dir)
       let measurements: Record<string, number | boolean> | undefined
-      if (options.measure !== undefined && options.measure.trim().length > 0) {
-        const raw = await runCommand(options.measure, dir, Math.min(timeboxMs, 120_000))
+      if (harnessed) await writeFile(join(dir, 'bench.ts'), options.harness as string, 'utf8')
+      const command = harnessed ? 'bun run bench.ts' : options.measure
+      if (command !== undefined && command.trim().length > 0) {
+        const raw = await runCommand(command, dir, Math.min(timeboxMs, 120_000))
         measurements = readMeasurements(raw)
         if (Object.keys(measurements).length === 0 && candidate.error === undefined) {
           candidate.error = 'the measurement command printed no JSON object'
@@ -407,6 +441,7 @@ export async function runSpike(
     id,
     question: options.question,
     criteria: options.criteria,
+    comparable: options.harness !== undefined && options.harness.trim().length > 0,
     ...options.measure === undefined ? {} : { measure: options.measure },
     timeboxMs,
     candidates: measured,
@@ -436,6 +471,7 @@ export function renderSpike(run: SpikeRun): string {
   }
   lines.push('')
   lines.push(`winner: ${run.winner ?? 'none qualified'} — implement this, or state in one line why you deviate.`)
+  if (!run.comparable) lines.push('comparability: each candidate supplied its own benchmark, so the numbers may measure different workloads.')
   for (const entry of run.ranking) lines.push(`- ${entry.id}: score ${entry.score}${entry.reasons.length > 0 ? ` (${entry.reasons.join('; ')})` : ''}`)
   return lines.join('\n')
 }
@@ -464,7 +500,15 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
       },
       measure: {
         type: 'string',
-        description: 'Command run inside every candidate directory; it must print one JSON object with a value per criterion key.',
+        description: 'Command run inside every candidate directory; it must print one JSON object with a value per criterion key. Ignored when harness is given.',
+      },
+      harness: {
+        type: 'string',
+        description: 'Source of the benchmark written as bench.ts into every candidate and restored before measuring, so all candidates share one instrument.',
+      },
+      contract: {
+        type: 'string',
+        description: 'The exact TypeScript interface each candidate must implement in impl.ts.',
       },
       candidates: { type: 'number', description: 'How many MVPs to build (2-5, default 3).' },
       timeboxMinutes: { type: 'number', description: 'Per-candidate budget in minutes (default 10).' },
@@ -480,6 +524,8 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
       question: string
       criteria: unknown
       measure?: string
+      harness?: string
+      contract?: string
       candidates?: number
       timeboxMinutes?: number
     }, exec: { agent?: unknown; signal?: AbortSignal }) {
@@ -489,6 +535,8 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
         question: args.question,
         criteria,
         ...args.measure === undefined ? {} : { measure: args.measure },
+        ...args.harness === undefined ? {} : { harness: args.harness },
+        ...args.contract === undefined ? {} : { contract: args.contract },
         ...args.candidates === undefined ? {} : { candidates: args.candidates },
         timeboxMs: (args.timeboxMinutes ?? totem.config.spikeTimeoutMs.get() / 60_000) * 60_000,
         parent: exec.agent,

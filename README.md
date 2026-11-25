@@ -320,7 +320,11 @@ ties broken by criterion order and `pass` criteria disqualifying outright.
 
 The model writes the candidates; the harness owns how many there are, how long
 each may run (10 minutes, `spikeTimeoutMs`), what counts as better, which one
-wins, and the record. Each run is written to `run.json` with every elapsed time
+wins, and the record. Pass `harness` (the benchmark source) and `contract` (the
+interface each candidate implements in `impl.ts`) and the same benchmark runs
+against every candidate, restored before measuring so a candidate cannot measure
+itself with its own instrument; without them the run is marked as not
+comparable. Each run is written to `run.json` with every elapsed time
 and a `timedOut` flag, so the budget can be tuned from data instead of taste.
 The caller gets a ranked table, the winner, and the instruction that deviating
 requires a one-line reason.

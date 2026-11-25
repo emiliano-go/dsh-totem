@@ -154,6 +154,42 @@ describe('the measurement runner', () => {
   })
 })
 
+describe('the harness-owned benchmark', () => {
+  test('a contract is stated in the brief and the worker is told not to bench itself', () => {
+    const brief = buildBrief({
+      question: 'q',
+      angle: ANGLES[0]!,
+      criteria,
+      dir: '/tmp/a',
+      timeboxMs: 600_000,
+      contract: 'export function run(x: number): number',
+      harnessed: true,
+    })
+    expect(brief).toContain('export function run(x: number): number')
+    expect(brief).toContain('restored before measuring')
+    expect(brief).not.toContain('bun run bench.ts`')
+  })
+
+  test('without a contract the measuring command is still described', () => {
+    const brief = buildBrief({ question: 'q', angle: ANGLES[0]!, criteria, dir: '/tmp/a', timeboxMs: 600_000, measure: 'bun run bench.ts' })
+    expect(brief).toContain('bun run bench.ts')
+  })
+
+  test('a run says whether its numbers are comparable', () => {
+    const run = {
+      id: 'spike-x',
+      question: 'q',
+      criteria,
+      timeboxMs: 600_000,
+      comparable: false,
+      candidates: [{ id: 'c1', angle: 'a', dir: 'x', elapsedMs: 1, timedOut: false, files: 1, loc: 1, measurements: {} }],
+      ranking: [{ id: 'c1', score: 0, qualified: true, reasons: [] }],
+      winner: 'c1',
+    }
+    expect(renderSpike(run as never)).toContain('may measure different workloads')
+  })
+})
+
 describe('the record', () => {
   test('briefs differ by angle and forbid the project', () => {
     const one = buildBrief({ question: 'q', angle: ANGLES[0]!, criteria, dir: '/tmp/a', timeboxMs: 600_000 })
