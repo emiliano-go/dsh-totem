@@ -147,11 +147,20 @@ tokens. Expert estimate 40 hours; the reference implementation is 3271 bytes.
 | arm | approach | bytes | verifier | grade |
 | --- | --- | --- | --- | --- |
 | A reasoning only | reverse-engineered the checkpoint as raw float32, recovered the tensor order empirically, found that the dump is name-sorted as strings so layers are h0,h1,h10,h11,h2,..., then a KV-cached forward pass and byte-level BPE | 4904 | 1 passed / 1.6s | pass |
-| B reasoning + MVPs | running | | | |
+| B reasoning + MVPs | spiked three C architectures (preload+KV cache, bf16-quantized, mmap+recompute); preload won at 607 ms vs 899 vs 3732 | 4860 | 1 passed / 1.0s | pass |
+
+The first attempt at this task was abandoned mid-run by the host restart: its
+`gpt2.c` was written at 8664 bytes and never golfed under the limit, so it scored
+nothing. It was re-run from a pristine checkout with the same 90 minutes the other
+arm had, and passed.
+
+Both arms independently discovered the same trap: the checkpoint is a bare float32
+dump in lexicographic tensor-name order, so the layer blocks are h0,h1,h10,h11,h2...
+Running them in numeric order produces fluent but wrong text.
 
 ## What this establishes
 
-Nine problems, nine ties, eighteen arm runs, all graded by the same hidden suites:
+Ten problems, ten ties, twenty arm runs, all graded by the same hidden suites:
 the reasoning arm matched the MVP arm every time, including on the problems built
 to separate them, and including the repository task with no design freedom. The premise that reasoning would pick the comfortable design
 was wrong twice over (fsync-per-write, then full scan).
@@ -162,8 +171,14 @@ out the failing one before any code was written. It also hardened the winner
 afterwards, though those fixes (torn-tail resync, batch rejection, prefix
 fallback) came from the arm, not from the tournament.
 
-The honest reading: on problems whose correct answer is textbook, the tournament
-buys evidence and discarded alternatives, not better outcomes. It should only pay
+Across four difficulty tiers -- designed problems, a repository bug fix, a real
+performance task, and Terminal-Bench tasks whose expert estimates run to 40 hours --
+the reasoning arm never lost. Four times an arm overruled its own spike ranking for
+a reason the criteria could not express, and one tournament returned an `unresolved`
+verdict that the arm then settled by measuring both survivors at full size.
+
+The honest reading: the tournament buys evidence, discarded alternatives and a
+record of why, not better outcomes. It should only pay
 where the answer is *not* knowable from memory, which is the case none of these
 three problems actually exercised.
 
