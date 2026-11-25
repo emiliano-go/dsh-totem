@@ -35,6 +35,19 @@ same design the hidden suite rejects by 660x — but the reasoning arm never
 proposed it: the inverted index is the textbook answer, and textbook answers are
 exactly what reasoning is good at.
 
+## 04 eviction policy (no textbook answer)
+
+| arm | design | grade |
+| --- | --- | --- |
+| A reasoning only | W-TinyLFU: 1% window, SLRU 20/80, count-min admission, aging | pass |
+| B reasoning + MVPs | pending | — |
+
+The trace mixes skewed popularity with sequential scans, and LRU fails it by 8.4
+points against a two-queue fixture. Arm A nevertheless reasoned to a design that
+resists scans — its own traces put it 8-9 points above LRU — without any
+tournament. The distinguishing fact it used was in the spec: the workload has
+periodic scans.
+
 ## What this establishes
 
 Three problems, three ties, six arm runs, all graded by the same hidden suites:
