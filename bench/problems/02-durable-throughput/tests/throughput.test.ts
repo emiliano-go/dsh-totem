@@ -1,13 +1,11 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 const ENTRY = process.env.STORE_ENTRY
 if (ENTRY === undefined) throw new Error('STORE_ENTRY must point at the solution store.ts')
 
-const TARGETS = JSON.parse(
-  readFileSync(join(import.meta.dir, '..', 'targets.json'), 'utf8'),
-) as { min_puts_per_second: number; durable_write_p99_ms: number; writes: number }
+const TARGETS = JSON.parse(process.env.BENCH_TARGETS ?? '{}') as { min_puts_per_second: number; durable_write_p99_ms: number; writes: number }
 
 describe('durable write throughput on the repository filesystem', () => {
   test('acknowledged writes sustain the pre-registered throughput', async () => {

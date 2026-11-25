@@ -19,6 +19,8 @@ if (problem === undefined || solution === undefined) {
 }
 
 const problemDir = new URL(`./problems/${problem}/`, import.meta.url).pathname
+const targetsPath = new URL(`./grading/${problem}.json`, import.meta.url).pathname
+const targets = await Bun.file(targetsPath).text().catch(() => '{}')
 const resolved = resolve(solution)
 const entry = `${resolved.replace(/\/+$/u, '')}/store.ts`
 
@@ -31,7 +33,7 @@ const files = (await Array.fromAsync(new Bun.Glob('*.test.ts').scan(suiteDir))).
 const results: { file: string; pass: boolean; tail: string }[] = []
 for (const file of files) {
   const proc = Bun.spawn(['bash', '-lc', `cd ${quote(resolved)} && bun test ${quote(`${suiteDir}/${file}`)}`], {
-    env: { ...process.env, STORE_ENTRY: entry },
+    env: { ...process.env, STORE_ENTRY: entry, BENCH_TARGETS: targets },
     stdout: 'pipe',
     stderr: 'pipe',
   })

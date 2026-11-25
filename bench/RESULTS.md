@@ -32,10 +32,13 @@ winner (arm B's torn-tail resync and batch-rejection fix).
 
 ## Validity gaps, in order of importance
 
-1. The arms could read `targets.json`, so they could tune to the grading
-   threshold instead of discovering the constraint. Arm A cited the floor
-   directly. Until targets are hidden at grade time, both arms are handicapped in
-   the experimenter's favour and the comparison overstates them equally.
+1. The arms could read `targets.json` next to the spec, so they could tune to the
+   grading threshold instead of discovering the constraint; arm A cited the floor
+   directly. Thresholds now live in `bench/grading/` and reach the suites only
+   through `BENCH_TARGETS` at grade time, so the problem folder an arm is sent to
+   no longer contains them. That removes the accidental visibility, not the
+   determined one: everything in the repository is still readable, and only a
+   working copy that holds the spec alone would enforce it.
 2. `n=2` problems. A tie on two is not evidence of parity in general.
 3. The no-retrieval rule is an instruction, not a profile without web tools.
 4. The hidden suites are mine, and they measure what I chose to measure: they did

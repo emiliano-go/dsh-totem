@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 const ENTRY = process.env.STORE_ENTRY
 const HERE = import.meta.dir
-const TARGETS = JSON.parse(readFileSync(join(HERE, '..', 'targets.json'), 'utf8')) as {
+const TARGETS = JSON.parse(process.env.BENCH_TARGETS ?? '{}') as {
   durable_write_p99_ms: number
   reopen_after_1mib_ms: number
   torn_records: number
