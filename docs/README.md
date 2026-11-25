@@ -13,6 +13,7 @@ adds to DeepSeek Harness and what is customized only in the live profile.
 | [pipelines.md](pipelines.md) | The opt-in `dsh-totem/pipelines` plugin and its audit tools |
 | [operations.md](operations.md) | Restart, interrupted-turn resume, unread marks, titles/TLDRs, design proxy, approvals, notifications, and the assistant UI |
 | [new-machine.md](new-machine.md) | Exact rebuild path for a fresh host: versions, profile dependencies, services, credentials, skills, and durable-state migration |
+| [telemetry.md](telemetry.md) | Disabled senders, the session mode, the hosts-file block, and residual egress |
 | [mcp-and-skills-install.md](mcp-and-skills-install.md) | Dated record of the live profile's MCP and skill installation and smoke tests |
 
 ## Shipped versus profile-local
