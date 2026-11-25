@@ -23,6 +23,16 @@ not necessity; the simple design met every constraint.
 Tie. The premise — that reasoning would pick correct-but-slow fsync-per-write and
 lose the throughput floor — was wrong: arm A batched on its own initiative.
 
+## 03 retrieval index (200k documents)
+
+| arm | design | grade |
+| --- | --- | --- |
+| A reasoning only | pending | — |
+| B reasoning + MVPs | spike ranked inverted+BM25 18 µs > bitset+TF-IDF 40 µs > full scan 145 µs; implemented inverted | pass |
+
+The tournament eliminated the full-scan design at 8x in its own harness — the
+same design the hidden suite rejects by 660x.
+
 ## What this establishes
 
 Two problems, two ties. The MVP phase has not shown a correctness or performance
