@@ -22,7 +22,8 @@ const problemDir = new URL(`./problems/${problem}/`, import.meta.url).pathname
 const targetsPath = new URL(`./grading/${problem}.json`, import.meta.url).pathname
 const targets = await Bun.file(targetsPath).text().catch(() => '{}')
 const resolved = resolve(solution)
-const entry = `${resolved.replace(/\/+$/u, '')}/store.ts`
+const entryName = (JSON.parse(targets).entry as string | undefined) ?? 'store.ts'
+const entry = `${resolved.replace(/\/+$/u, '')}/${entryName}`
 
 const quote = (value: string): string => `'${value.replace(/'/gu, `'\\''`)}'`
 

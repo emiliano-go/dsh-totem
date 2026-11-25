@@ -1,0 +1,8 @@
+{
+  "min_recall5": 0.85,
+  "p95_query_ms": 2.0,
+  "max_build_ms": 20000,
+  "documents": 200000,
+  "queries": 300,
+  "entry": "index.ts"
+}
