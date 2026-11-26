@@ -158,9 +158,25 @@ Both arms independently discovered the same trap: the checkpoint is a bare float
 dump in lexicographic tensor-name order, so the layer blocks are h0,h1,h10,h11,h2...
 Running them in numeric order produces fluent but wrong text.
 
+## 11 SWE-bench Pro (hard subset)
+
+The public tier closest to Cognition's FrontierCode 2.0, whose tasks are private.
+`instance_ansible__ansible-d62496fe`: `human_to_bytes` must reject malformed size
+strings. Hidden tests installed and unreadable to the arm. Calibration: base +
+test patch 22 failed / 107 passed; base + gold patch 129 passed.
+
+| arm | change | tests | grade |
+| --- | --- | --- | --- |
+| A reasoning only | full-match ASCII parse, unit validation moved to a whitelist helper | 129 passed | pass |
+| B reasoning + MVPs | three parsers spiked (anchored regex 1.24 us, char scanner 1.44 us, right-split 1.57 us); anchored regex won | 129 passed | pass |
+
+Both found the same five bug classes without reading the tests: trailing prose,
+units merely containing "byte", Unicode digits, leading whitespace, and silent
+truncation at the first separator.
+
 ## What this establishes
 
-Ten problems, ten ties, twenty arm runs, all graded by the same hidden suites:
+Eleven problems, eleven ties, twenty-two arm runs, all graded by the same hidden suites:
 the reasoning arm matched the MVP arm every time, including on the problems built
 to separate them, and including the repository task with no design freedom. The premise that reasoning would pick the comfortable design
 was wrong twice over (fsync-per-write, then full scan).
