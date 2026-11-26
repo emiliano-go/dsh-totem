@@ -696,6 +696,7 @@ from the session log:
 - lifetime token total, peak day, streaks, active days, sessions;
 - average tokens/day, prompts/day, tokens/prompt, and tokens/session;
 - a GitHub-style 53-week activity heatmap (daily or cumulative);
+- horizontal usage cards for each OpenCode Go key in the rotation pool;
 - top models by token share.
 
 Usage is recorded from live `assistant/message` events and backfilled on first
@@ -709,6 +710,12 @@ The **All / dsh / opencode / encoder** filters cover more than dsh: the
 `~/.dsh/totem/overview-import.json`. Importing is manual (no surprise disk
 scan); **Re-import** picks up new history. The page uses the same `apiToken` as
 the other `/totem` routes.
+
+The **Usage** cards below the activity graph read
+`https://opencode.ai/inference/go/v1/usage` for every key in
+`~/.local/share/encoder/auth.json`. Each card shows the 5-hour, weekly, and
+monthly meters, the key state, and reset times; keys are masked and never sent
+to the browser.
 
 The approvals block is the release tracker at
 [emiliano-go/github-release-tracker](https://github.com/emiliano-go/github-release-tracker):

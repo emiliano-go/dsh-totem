@@ -158,7 +158,11 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.slots.inject('main', () => ctx.slots.register({
     name: 'main',
     key: 'overview',
-    inject: () => ({ load: overview.load, importHistory: overview.importHistory }),
+    inject: () => ({
+      load: overview.load,
+      importHistory: overview.importHistory,
+      loadKeyUsage: overview.loadKeyUsage,
+    }),
   }, OverviewPage)), 'dsh-totem: overview panel')
 
   // Deterministic verification card: the Host ran the rules at turn end, the

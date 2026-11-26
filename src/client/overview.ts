@@ -46,6 +46,33 @@ export type OverviewResult =
   | { ok: true; data: OverviewData }
   | { ok: false; reason: 'unauthorized' | 'missing-route' | 'offline' | 'error'; status?: number }
 
+export interface KeyUsageMeter {
+  status: string
+  percent: number
+  resetsAt: string | null
+}
+
+export interface KeyUsageData {
+  provider: string
+  generatedAt: string
+  keys: {
+    id: string
+    masked: string
+    state: 'usable' | 'suspended' | 'revoked'
+    suspendedUntil: string | null
+    usage: {
+      rolling: KeyUsageMeter | null
+      weekly: KeyUsageMeter | null
+      monthly: KeyUsageMeter | null
+    } | null
+    error: string | null
+  }[]
+}
+
+export type KeyUsageResult =
+  | { ok: true; data: KeyUsageData }
+  | { ok: false; reason: 'unauthorized' | 'missing-route' | 'offline' | 'error'; status?: number }
+
 interface OverviewConfig {
   apiToken?: string
 }
@@ -56,6 +83,17 @@ async function readResult(response: Response): Promise<OverviewResult> {
   if (!response.ok) return { ok: false, reason: 'error', status: response.status }
   try {
     return { ok: true, data: await response.json() as OverviewData }
+  } catch {
+    return { ok: false, reason: 'error', status: response.status }
+  }
+}
+
+async function readKeyUsageResult(response: Response): Promise<KeyUsageResult> {
+  if (response.status === 401 || response.status === 403) return { ok: false, reason: 'unauthorized', status: response.status }
+  if (response.status === 404) return { ok: false, reason: 'missing-route', status: 404 }
+  if (!response.ok) return { ok: false, reason: 'error', status: response.status }
+  try {
+    return { ok: true, data: await response.json() as KeyUsageData }
   } catch {
     return { ok: false, reason: 'error', status: response.status }
   }
@@ -77,6 +115,19 @@ export class OverviewController {
         headers: { authorization: `Bearer ${token}` },
       })
       return await readResult(response)
+    } catch {
+      return { ok: false, reason: 'offline' }
+    }
+  }
+
+  loadKeyUsage = async (): Promise<KeyUsageResult> => {
+    const token = this.token()
+    if (token.length === 0) return { ok: false, reason: 'unauthorized' }
+    try {
+      const response = await fetch('/totem/key-usage', {
+        headers: { authorization: `Bearer ${token}` },
+      })
+      return await readKeyUsageResult(response)
     } catch {
       return { ok: false, reason: 'offline' }
     }

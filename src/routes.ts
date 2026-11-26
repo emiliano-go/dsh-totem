@@ -10,6 +10,7 @@ import type { VerifyLane, VerifyStore } from './verify-lane.ts'
 import { ruleCatalog } from './verify-lane.ts'
 import { sendNotification } from './notify.ts'
 import type { OverviewService } from './overview.ts'
+import { readKeyUsage } from './key-usage.ts'
 import type { ConflictInbox } from './conflicts.ts'
 import type { RestartController } from './restart.ts'
 import type { UnreadStore } from './unread.ts'
@@ -166,6 +167,7 @@ const routes = {
       const filter = source === 'dsh' || source === 'opencode' || source === 'encoder' ? source : 'all'
       return deps.overview.snapshot(filter)
     }
+    if (path === '/totem/key-usage') return readKeyUsage()
     throw Object.assign(new Error('not found'), { status: 404 })
   },
   async POST(

@@ -166,11 +166,13 @@ addresses. Watches fail closed by default.
 ## Overview and usage
 
 `GET /totem/overview` aggregates `~/.dsh/totem/usage.jsonl` and any imported
-history. The page shows:
+history. `GET /totem/key-usage` returns masked OpenCode Go meters for every key
+in encoder's rotation pool. The page shows:
 
 - total and per-day tokens/cost;
 - session and source breakdowns;
 - an import action for historical usage;
+- per-key 5-hour, weekly, and monthly usage cards;
 - the release approvals block.
 
 The import writes `overview-import.json` and is safe to repeat.

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type { OverviewData, OverviewResult, OverviewSource } from './overview.ts'
+import type { KeyUsageData, KeyUsageMeter, KeyUsageResult, OverviewData, OverviewResult, OverviewSource } from './overview.ts'
 import { ApprovalsSection } from './ApprovalsSection.tsx'
 
 const SURFACE = 'color-mix(in oklab, currentColor 5%, transparent)'
@@ -14,6 +14,7 @@ const MUTED_TEXT = 'color-mix(in oklab, currentColor 62%, transparent)'
 export interface OverviewFace {
   load: (source?: OverviewSource) => Promise<OverviewResult>
   importHistory: () => Promise<OverviewResult>
+  loadKeyUsage: () => Promise<KeyUsageResult>
 }
 
 export type OverviewPageProps = PropsRuntime<'main'> & InjectFace<OverviewFace>
@@ -201,6 +202,103 @@ function Failure({ reason, status }: { reason: 'unauthorized' | 'missing-route' 
   )
 }
 
+function resetLabel(value: string | null): string {
+  if (value === null) return 'reset unknown'
+  const at = new Date(value)
+  if (Number.isNaN(at.getTime())) return 'reset unknown'
+  return `resets ${at.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+}
+
+function UsageMeterRow({ label, meter }: { label: string; meter: KeyUsageMeter | null }) {
+  const percent = meter === null ? 0 : Math.max(0, Math.min(100, meter.percent))
+  const limited = meter?.status === 'rate-limited' || percent >= 100
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 11, fontWeight: 600 }}>{label}</span>
+        <span style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', color: limited ? '#f87171' : 'inherit' }}>
+          {meter === null ? '—' : `${percent}%`}
+        </span>
+      </div>
+      <div style={{ height: 6, borderRadius: 4, background: 'INSET', overflow: 'hidden' }}>
+        <div style={{
+          width: `${percent}%`,
+          height: '100%',
+          borderRadius: 4,
+          background: limited ? '#f87171' : '#1d8cf8',
+        }} />
+      </div>
+      <span style={{ ...MUTED, fontSize: 10 }}>{meter === null ? 'no data' : resetLabel(meter.resetsAt)}</span>
+    </div>
+  )
+}
+
+function KeyUsageCard({ card }: { card: KeyUsageData['keys'][number] }) {
+  const tone = card.state === 'usable'
+    ? '#34d399'
+    : card.state === 'suspended' ? '#fbbf24' : '#f87171'
+  return (
+    <div style={{ ...CARD, flex: '1 0 260px', minWidth: 260, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, fontFamily: 'ui-monospace, monospace' }}>{card.masked}</span>
+        <span style={{
+          border: `1px solid ${tone}`,
+          color: tone,
+          borderRadius: 999,
+          padding: '2px 8px',
+          fontSize: 10,
+          textTransform: 'capitalize',
+        }}>
+          {card.state}
+        </span>
+      </div>
+      {card.usage === null
+        ? (
+          <div style={{ ...MUTED, fontSize: 11 }}>
+            Usage unavailable{card.error === null ? '' : `: ${card.error}`}
+          </div>
+        )
+        : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <UsageMeterRow label="5 hours" meter={card.usage.rolling} />
+            <UsageMeterRow label="This week" meter={card.usage.weekly} />
+            <UsageMeterRow label="This month" meter={card.usage.monthly} />
+          </div>
+        )}
+      {card.suspendedUntil === null
+        ? null
+        : <span style={{ ...MUTED, fontSize: 10 }}>Suspended until {resetLabel(card.suspendedUntil).replace(/^resets /u, '')}</span>}
+    </div>
+  )
+}
+
+function KeyUsageSection({ result }: { result: KeyUsageResult | null }) {
+  return (
+    <div style={CARD}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>Usage</span>
+          <span style={{ ...MUTED, fontSize: 11 }}>OpenCode Go rotation keys</span>
+        </div>
+        {result?.ok === true
+          ? <span style={{ ...MUTED, fontSize: 10 }}>{result.data.keys.length} key{result.data.keys.length === 1 ? '' : 's'}</span>
+          : null}
+      </div>
+      {result === null
+        ? <span style={MUTED}>Loading keys…</span>
+        : result.ok === false
+          ? <span style={{ ...MUTED, fontSize: 12 }}>Key usage unavailable ({result.reason}).</span>
+          : result.data.keys.length === 0
+            ? <span style={{ ...MUTED, fontSize: 12 }}>No OpenCode keys configured.</span>
+            : (
+              <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 4 }}>
+                {result.data.keys.map(card => <KeyUsageCard key={card.id} card={card} />)}
+              </div>
+            )}
+    </div>
+  )
+}
+
 /**
  * Render the usage overview.
  * @param props - the injected loader and importer.
@@ -208,6 +306,7 @@ function Failure({ reason, status }: { reason: 'unauthorized' | 'missing-route' 
 export function OverviewPage(props: OverviewPageProps) {
   const [source, setSource] = useState<OverviewSource>('all')
   const [result, setResult] = useState<OverviewResult | null>(null)
+  const [keyUsage, setKeyUsage] = useState<KeyUsageResult | null>(null)
   const [mode, setMode] = useState<'daily' | 'cumulative'>('daily')
   const [importing, setImporting] = useState(false)
 
@@ -225,6 +324,20 @@ export function OverviewPage(props: OverviewPageProps) {
     }
   }, [source])
 
+  useEffect(() => {
+    let active = true
+    const load = async (): Promise<void> => {
+      const next = await props.loadKeyUsage()
+      if (active) setKeyUsage(next)
+    }
+    void load()
+    const timer = setInterval(() => { void load() }, 60_000)
+    return () => {
+      active = false
+      clearInterval(timer)
+    }
+  }, [])
+
   const runImport = async (): Promise<void> => {
     if (importing) return
     setImporting(true)
@@ -236,6 +349,12 @@ export function OverviewPage(props: OverviewPageProps) {
     } else {
       setResult(next)
     }
+  }
+
+  const refresh = async (): Promise<void> => {
+    const [next, keys] = await Promise.all([props.load(source), props.loadKeyUsage()])
+    setResult(next)
+    setKeyUsage(keys)
   }
 
   if (result === null) {
@@ -270,7 +389,7 @@ export function OverviewPage(props: OverviewPageProps) {
             {importedAt === null
               ? null
               : <span style={{ ...MUTED, fontSize: 11 }}>Imported {new Date(importedAt).toLocaleString()}</span>}
-            <button type="button" style={CHIP} onClick={() => { void props.load(source).then(setResult) }}>Refresh</button>
+            <button type="button" style={CHIP} onClick={() => { void refresh() }}>Refresh</button>
             <button
               type="button"
               style={{ ...CHIP, color: 'inherit', borderColor: 'HAIRLINE' }}
@@ -338,6 +457,8 @@ export function OverviewPage(props: OverviewPageProps) {
                 </div>
                 <Heatmap days={data.days} mode={mode} />
               </div>
+
+              <KeyUsageSection result={keyUsage} />
 
               {data.models.length > 0
                 ? (
