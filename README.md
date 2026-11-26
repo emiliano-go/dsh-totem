@@ -225,8 +225,8 @@ Two budgets keep injection honest:
 
 | Field | Default | Meaning |
 |---|---|---|
-| `digestTokens` | `400` | Token budget for the first-step digest. |
-| `recoveryTokens` | `900` | Token budget for the post-compaction block. |
+| `digestTokens` | `600` | Token budget for the first-step digest. |
+| `recoveryTokens` | `1600` | Token budget for the post-compaction block. |
 
 The estimate is four characters per token, which slightly over-counts prose and
 therefore errs on the safe side of the budget.

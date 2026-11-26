@@ -99,6 +99,15 @@ describe('compaction detection', () => {
     // With no memory at all, the working state is still returned.
     expect(formatRecovery([], [], 200, working)).toBe(working)
   })
+
+  test('recovery carries the latest compact summary', () => {
+    const text = formatRecovery([
+      { type: 'decision', title: 'Use SQLite', statement: 'Portable.', importance: 0.9 },
+    ], [], 400, '', 'The old task: fix the login race before touching the schema.')
+    expect(text).toContain('Latest compact')
+    expect(text).toContain('fix the login race')
+    expect(text).toContain('Use SQLite')
+  })
 })
 
 describe('command parsing', () => {
@@ -230,5 +239,17 @@ describe('compaction tracker', () => {
     memory.note('s1', { type: 'compaction/start' })
     expect(await memory.take({}, 's1', new AbortController().signal, 200)).toBe('')
     expect(memory.needsRecovery('s1')).toBe(false)
+  })
+
+  test('reads the latest compact from the archive into recovery', async () => {
+    const fake = {
+      async projectFor() { return '/repo' },
+      async call() { return [] },
+    }
+    const blocks = { async read() { return [{ summary: 'Earlier: the migration is half done.' }] } }
+    const memory = new CompactionMemory(fake as never, undefined, blocks)
+    memory.note('s1', { type: 'compaction/start' })
+    const text = await memory.take({}, 's1', new AbortController().signal, 400)
+    expect(text).toContain('Earlier: the migration is half done.')
   })
 })

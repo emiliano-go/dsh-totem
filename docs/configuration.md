@@ -37,8 +37,8 @@ The resolved child environment is `TOTEM_EMBEDDING_BACKEND`,
 | `preferFileContext` | `true` | no | Return a fresh file TLDR instead of the full body on a whole-file read. |
 | `distill` | `true` | no | Let the secondary model author memory prose; when false the deterministic draft is used and compaction has no Totem target. |
 | `digest` | `true` | no | Inject a recent-memory digest at the first step of a session. |
-| `digestTokens` | `400` | no | Token budget for the first-step digest. |
-| `recoveryTokens` | `900` | no | Token budget for the post-compaction recovery block. |
+| `digestTokens` | `600` | no | Token budget for the first-step digest. |
+| `recoveryTokens` | `1600` | no | Token budget for the post-compaction recovery block. |
 | `maxTokens` | `512` | no | Output cap for one memory distillation call. |
 | `maxInputBytes` | `24000` | no | Input byte cap for one distillation call. |
 | `compactionTokens` | `4096` | no | Output cap for a native compaction summary. |

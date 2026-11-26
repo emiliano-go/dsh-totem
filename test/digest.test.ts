@@ -29,12 +29,14 @@ test('digest filters file-state and prioritises durable memory', () => {
   expect(text).not.toContain('File: src/queue.py')
 })
 
-test('digest is empty when only file state exists', () => {
-  expect(formatDigest([{
+test('digest keeps the memory-first hint when only file state exists', () => {
+  const text = formatDigest([{
     type: 'implementation',
     title: 'File: src/queue.py',
     metadata: { fileKind: 'file_tldr' },
-  }], [])).toBe('')
+  }], [])
+  expect(text).toContain('Memory-first')
+  expect(text).not.toContain('File: src/queue.py')
 })
 
 test('lastUserTask ignores injected memory and picks the newest human turn', () => {

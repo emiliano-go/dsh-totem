@@ -111,7 +111,8 @@ compaction and recovery are complementary:
 
 - the native compact replaces the old span in the live transcript;
 - `ContextBlock` keeps the compact searchable;
-- recovery re-injects durable decisions, invariants, gotchas, and active tasks.
+- recovery re-injects the latest compact summary, durable decisions, invariants,
+  gotchas, and active tasks, and names `compaction_search` for older compacts.
 
 ## Why billion-context was removed from this lane
 

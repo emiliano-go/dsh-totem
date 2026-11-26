@@ -207,8 +207,8 @@ export const Config: z<Config> = z.object({
   preferFileContext: z.boolean().default(true),
   distill: z.boolean().default(true),
   digest: z.boolean().default(true),
-  digestTokens: z.number().step(1).min(0).default(400),
-  recoveryTokens: z.number().step(1).min(0).default(900),
+  digestTokens: z.number().step(1).min(0).default(600),
+  recoveryTokens: z.number().step(1).min(0).default(1600),
   maxTokens: z.number().step(1).min(64).default(512),
   maxInputBytes: z.number().step(1).min(1024).default(24000),
   compactionTokens: z.number().step(1).min(256).default(4096),
@@ -346,13 +346,15 @@ function isFileState(item: Record<string, unknown>): boolean {
 }
 
 export function formatDigest(recent: unknown, tasks: unknown, maxTokens = 400): string {
+  const hint = 'Memory-first: search Totem before exploring; store non-obvious findings once; use compaction_search after a compact.'
   const recentItems = asItems(recent)
     .filter(item => !isFileState(item))
     .sort((a, b) => Number(b.importance ?? 0) - Number(a.importance ?? 0))
   const recentLines = recentItems.slice(0, 5).map(line).filter(Boolean)
   const taskLines = asItems(tasks).slice(0, 5).map(line).filter(Boolean)
-  if (recentLines.length === 0 && taskLines.length === 0) return ''
+  if (recentLines.length === 0 && taskLines.length === 0) return hint
   const text = [
+    hint,
     'Project memory (Totem) — treat as stale-prone and verify before relying on it.',
     ...recentLines.length === 0 ? [] : ['Recent:', ...recentLines],
     ...taskLines.length === 0 ? [] : ['In progress:', ...taskLines],

@@ -3,6 +3,15 @@ export const MEMORY_PROMPT = `# Memory
 
 This project has a persistent memory store (Totem, \`.totem/totem.db\`) that survives across sessions. Use it to accumulate knowledge about the codebase instead of re-discovering it.
 
+## Memory-first
+
+Before \`grep\`, \`glob\`, \`read\`, or a shell search, call \`memory_search\` or
+\`engineering_context\`. If the answer is already stored, use it instead of
+reading the same files again. After a non-obvious discovery, record it with
+\`memory_create\`; do not leave it only in the transcript. When context feels
+lost, first call \`compaction_search\` for this session, then \`memory_search\`
+for earlier work. Reuse is the token-efficient path.
+
 ## Tools
 
 - \`memory_search\` / \`memory_list\` / \`memory_get\` — query existing memories. Search before grepping or reading files: the answer may already be recorded.

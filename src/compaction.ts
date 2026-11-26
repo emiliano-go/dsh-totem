@@ -22,6 +22,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { bulletBlock, clipToTokens, rankItems, type BudgetItem } from './budget.ts'
 import type { TotemService } from './service.ts'
 import type { SessionLedger } from './ledger.ts'
+import { ContextBlockStore } from './compaction/blocks.ts'
 
 /** The event fields compaction detection reads. */
 export interface CompactionEventLike {
@@ -59,33 +60,41 @@ export function formatRecovery(
   tasks: readonly BudgetItem[],
   maxTokens = 600,
   workingState = '',
+  compactSummary = '',
 ): string {
   const durable = rankItems(recent.filter((item) => {
     const type = typeof item.type === 'string' ? item.type : ''
     return RECOVERY_TYPES.has(type)
   }))
   const hasMemory = durable.length > 0 || tasks.length > 0
-  if (!hasMemory && workingState.length === 0) return ''
+  const compact = compactSummary.trim().length === 0
+    ? ''
+    : clipToTokens(
+      `Latest compact (search older compacts with compaction_search):\n${compactSummary.trim()}`,
+      Math.max(120, Math.floor(maxTokens * 0.3)),
+    )
+  const remaining = Math.max(0, maxTokens - Math.ceil(compact.length / 4))
+  if (!hasMemory && workingState.length === 0 && compact.length === 0) return ''
   // The mechanical ledger keeps the present task; durable memory keeps the
   // decisions behind it. Split the budget so neither starves the other.
   const working = workingState.length === 0
     ? ''
-    : clipToTokens(workingState, Math.max(120, Math.floor(maxTokens * 0.5)))
-  const memoryBudget = Math.max(0, maxTokens - (working.length === 0 ? 0 : Math.ceil(working.length / 4)))
-  if (!hasMemory) return working
+    : clipToTokens(workingState, Math.max(120, Math.floor(remaining * 0.5)))
+  const memoryBudget = Math.max(0, remaining - (working.length === 0 ? 0 : Math.ceil(working.length / 4)))
+  if (!hasMemory) return [compact, working].filter(Boolean).join('\n\n')
   // Memory tasks share importance semantics with other items, so they are
   // rendered after the durable claims and get whatever budget remains.
   const lines = bulletBlock(durable, Math.max(0, memoryBudget - 120))
   const suffix = lines.length > 0 ? lines : []
   const taskLines = bulletBlock(tasks, Math.max(0, memoryBudget - 60), 160)
-  if (suffix.length === 0 && taskLines.length === 0) return working
+  if (suffix.length === 0 && taskLines.length === 0) return [compact, working].filter(Boolean).join('\n\n')
   const memory = clipToTokens([
     'Project memory restored after context compaction (Totem).',
     'These are durable claims from earlier work; verify anything stale-prone before relying on it.',
     ...suffix.length === 0 ? [] : ['Durable:', ...suffix],
     ...taskLines.length === 0 ? [] : ['In progress:', ...taskLines],
   ].join('\n'), memoryBudget)
-  return working.length === 0 ? memory : `${working}\n\n${memory}`
+  return [compact, working, memory].filter(Boolean).join('\n\n')
 }
 
 /** Session-scoped compaction tracker. */
@@ -98,6 +107,7 @@ export class CompactionMemory {
   constructor(
     private readonly totem: TotemService,
     private readonly ledger?: SessionLedger,
+    private readonly blocks: Pick<ContextBlockStore, 'read'> = new ContextBlockStore(),
   ) {}
 
   /** Record one event; returns true when it was a compaction marker. */
@@ -136,15 +146,18 @@ export class CompactionMemory {
     this.pending.delete(sessionId)
     try {
       const project = await this.totem.projectFor(agent, signal)
-      const [recent, tasks] = await Promise.all([
+      const [recent, tasks, blocks] = await Promise.all([
         this.totem.call('memory_list_tool', { sort: 'importance', limit: 40, project }, signal),
         this.totem.call('memory_tasks_tool', { limit: 10, project }, signal),
-      ]) as [BudgetItem[] | unknown, BudgetItem[] | unknown]
+        this.blocks.read(sessionId).catch(() => []),
+      ]) as [BudgetItem[] | unknown, BudgetItem[] | unknown, { summary: string }[]]
+      const latestCompact = blocks.length === 0 ? '' : blocks[blocks.length - 1].summary
       return formatRecovery(
         Array.isArray(recent) ? recent as BudgetItem[] : [],
         Array.isArray(tasks) ? tasks as BudgetItem[] : [],
         maxTokens,
         this.ledger?.render(sessionId, Math.max(0, Math.floor(maxTokens * 0.5))) ?? '',
+        latestCompact,
       )
     } catch {
       return ''
