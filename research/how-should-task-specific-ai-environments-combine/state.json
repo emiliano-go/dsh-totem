@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "slug": "how-should-task-specific-ai-environments-combine",
+  "question": "How should task-specific AI environments combine a persona, a small MCP surface, and one-shot MCP pipelines to cut tokens and round trips without losing observability or control?",
+  "createdAt": "2026-11-23T21:21:51.282Z",
+  "updatedAt": "2026-11-23T21:21:51.283Z",
+  "stage": "brief",
+  "gates": {
+    "brief": {
+      "status": "pending"
+    },
+    "landscape": {
+      "status": "pending"
+    },
+    "plan": {
+      "status": "pending"
+    },
+    "depth": {
+      "status": "pending"
+    },
+    "midpoint": {
+      "status": "pending"
+    },
+    "edges": {
+      "status": "pending"
+    },
+    "verify": {
+      "status": "pending"
+    },
+    "report": {
+      "status": "pending"
+    },
+    "redteam": {
+      "status": "pending"
+    }
+  },
+  "budget": {
+    "limits": {
+      "searches": 25,
+      "pages": 15,
+      "minutes": 45
+    },
+    "used": {
+      "searches": 0,
+      "pages": 0,
+      "minutes": 0
+    }
+  },
+  "subquestions": [
+    {
+      "id": "Q1",
+      "text": "Programmatic/code-mode MCP designs",
+      "evidence": "Which published implementations collapse many tool calls into one code or pipeline call, and what measured token/latency savings and limitations are reported?"
+    },
+    {
+      "id": "Q2",
+      "text": "Composite and long-running MCP semantics",
+      "evidence": "What do the MCP spec and major servers offer for multi-step, task-like, or long-running operations, and where do they still require client round trips?"
+    },
+    {
+      "id": "Q3",
+      "text": "Token economics",
+      "evidence": "What is actually spent on tool schemas, tool results, and repeated model turns, and what do benchmarks show about code execution versus direct tool calling?"
+    },
+    {
+      "id": "Q4",
+      "text": "Security and observability",
+      "evidence": "What controls are required when a model writes code or invokes an opaque pipeline: sandboxing, least privilege, provenance, error surfaces, and auditability?"
+    },
+    {
+      "id": "Q5",
+      "text": "DSH fit",
+      "evidence": "What primitives already exist in the local DeepSeek Harness for subagents, workflows, MCP servers, and per-task environments, and what is the smallest viable architecture?"
+    },
+    {
+      "id": "Q6",
+      "text": "Failure modes and critiques",
+      "evidence": "Where do personas, mega-tools, and hidden pipelines fail, and what evidence argues against them?"
+    }
+  ],
+  "sources": [],
+  "claims": [],
+  "gaps": [],
+  "history": [
+    {
+      "at": "2026-11-23T21:21:51.282Z",
+      "event": "init"
+    }
+  ]
+}

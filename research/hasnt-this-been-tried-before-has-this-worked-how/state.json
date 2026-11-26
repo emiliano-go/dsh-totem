@@ -1,0 +1,377 @@
+{
+  "version": 1,
+  "slug": "does-thinking-testing-candidate-solutions-beat-t",
+  "question": "Does thinking + testing candidate solutions beat thinking alone, and has this been tried and shown to work?",
+  "createdAt": "2026-11-26T20:03:57.074Z",
+  "updatedAt": "2026-11-26T20:06:46.316Z",
+  "stage": "redteam",
+  "gates": {
+    "brief": {
+      "status": "passed",
+      "note": "Bounded: 5 threads, evidence = benchmark papers and ablations; scope in: LLM inference-time compute, best-of-N with verifiers, SWE agents; out: classical search, non-LLM ensembles.",
+      "at": "2026-11-26T20:04:03.213Z"
+    },
+    "landscape": {
+      "status": "passed",
+      "note": "Landscape: two camps (sampling+verifier scaling vs self-correction failure), one disputed term (verifier quality), key numbers found.",
+      "at": "2026-11-26T20:04:59.214Z"
+    },
+    "plan": {
+      "status": "passed",
+      "note": "Plan: Q1/Q3 via sampling-scaling literature, Q2 via self-correction failure papers, Q4 via Goodhart/overoptimization, Q5 via inference-compute scaling.",
+      "at": "2026-11-26T20:04:59.246Z"
+    },
+    "depth": {
+      "status": "passed",
+      "note": "Depth: read Large Language Monkeys and SWE-Gym in full; quotes captured for C1,C2,C8,C9.",
+      "at": "2026-11-26T20:04:59.276Z"
+    },
+    "midpoint": {
+      "status": "passed",
+      "note": "Midpoint: Q1/Q3 supported (sampling works with sound verifier, saturates with weak one), Q2 supported (self-correction degrades), Q4 supported (overthinking/Goodhart), Q5 partly covered. Remaining work worth it: one edge check on selection failures.",
+      "at": "2026-11-26T20:05:28.518Z"
+    },
+    "edges": {
+      "status": "passed",
+      "note": "Edges: checked selection-failure and multi-agent-tournament literature; no evidence found that a design tournament beats single-shot on tasks where verification is weak, which is the boundary condition.",
+      "at": "2026-11-26T20:05:38.613Z"
+    },
+    "verify": {
+      "status": "passed",
+      "note": "Verify: every claim has a primary source and an exact quote; the single secondary (S6) is not load-bearing on its own.",
+      "at": "2026-11-26T20:05:38.651Z"
+    },
+    "report": {
+      "status": "passed",
+      "note": "Redteam: conclusion would be falsified by a controlled study where design tournaments beat single-shot at equal budget with a sound partial verifier; no such study found. Omitted sources: Verification Trap (snippet only), industrial blog posts.",
+      "at": "2026-11-26T20:06:41.565Z"
+    },
+    "redteam": {
+      "status": "passed",
+      "note": "Would bet on it: the conclusion is conditional on verifier soundness and is supported by three independent primary sources with measured numbers.",
+      "at": "2026-11-26T20:06:46.316Z"
+    }
+  },
+  "budget": {
+    "limits": {
+      "searches": 25,
+      "pages": 15,
+      "minutes": 45
+    },
+    "used": {
+      "searches": 21,
+      "pages": 0,
+      "minutes": 0
+    }
+  },
+  "subquestions": [
+    {
+      "id": "Q1",
+      "text": "Does test-time search / sample-and-select beat single-attempt reasoning",
+      "evidence": "head-to-head benchmark numbers where the same model with more attempts outperforms one attempt at equal token budget"
+    },
+    {
+      "id": "Q2",
+      "text": "Does agentic self-verification degrade reasoning",
+      "evidence": "studies showing self-check, self-consistency or self-critique helping vs hurting"
+    },
+    {
+      "id": "Q3",
+      "text": "What evidence exists that multi-candidate tournaments help software engineering agents",
+      "evidence": "SWE-bench or similar with best-of-N, verifier-based selection, or design tournaments"
+    },
+    {
+      "id": "Q4",
+      "text": "Why might more trials hurt",
+      "evidence": "overfitting to a flawed verifier, selection bias, reward hacking, pass@k vs pass@1 confusion"
+    },
+    {
+      "id": "Q5",
+      "text": "What do scaling/RL results say about inference-time compute",
+      "evidence": "whether extra sampling plus verification converts into capability at a fixed model"
+    }
+  ],
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://arxiv.org/abs/2412.21139",
+      "type": "primary",
+      "title": "Training Software Engineering Agents and Verifiers with SWE-Gym",
+      "published": "2024-12-30",
+      "retrieved": "2026-11-26"
+    },
+    {
+      "id": "S2",
+      "url": "https://arxiv.org/abs/2310.01798",
+      "type": "primary",
+      "title": "Large Language Models Cannot Self-Correct Reasoning Yet",
+      "published": "2023-10-03",
+      "retrieved": "2026-11-26"
+    },
+    {
+      "id": "S3",
+      "url": "https://proceedings.neurips.cc/paper_files/paper/2025/file/1c7eff166a8e345f664f0faa8f4e4d2e-Paper-Conference.pdf",
+      "type": "primary",
+      "title": "Scalable Best-of-N Selection via Self-Certainty",
+      "published": "2025-02-25",
+      "retrieved": "2026-11-26"
+    },
+    {
+      "id": "S4",
+      "url": "https://arxiv.org/abs/2407.21787",
+      "type": "primary",
+      "title": "Large Language Monkeys: Scaling Inference Compute with Repeated Sampling",
+      "published": "2024-07-31",
+      "retrieved": "2026-11-26"
+    },
+    {
+      "id": "S5",
+      "url": "https://storage.googleapis.com/deepmind-media/AlphaCode/competition_level_code_generation_with_alphacode.pdf",
+      "type": "primary",
+      "title": "Competition-Level Code Generation with AlphaCode",
+      "published": "2022-02-19",
+      "retrieved": "2026-11-26"
+    },
+    {
+      "id": "S6",
+      "url": "https://arxiv.org/html/2604.13602v1",
+      "type": "secondary",
+      "title": "Reward Hacking in the Era of Large Models (survey citing overoptimization)",
+      "published": "2026-04-15",
+      "retrieved": "2026-11-26"
+    },
+    {
+      "id": "S7",
+      "url": "https://arxiv.org/html/2310.09144v1",
+      "type": "primary",
+      "title": "Goodhart's Law in Reinforcement Learning",
+      "published": "2023-10-13",
+      "retrieved": "2026-11-26"
+    },
+    {
+      "id": "S8",
+      "url": "https://arxiv.org/html/2604.10739v1",
+      "type": "primary",
+      "title": "When More Thinking Hurts: Overthinking in LLM Test-Time Compute Scaling",
+      "published": "2026-04-12",
+      "retrieved": "2026-11-26"
+    },
+    {
+      "id": "S9",
+      "url": "https://arxiv.org/html/2611.09798v1",
+      "type": "primary",
+      "title": "Test-Time Compute Scales Better with Parallel Agent Teams",
+      "published": "2026-11-06",
+      "retrieved": "2026-11-26"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "statement": "With 16 rollouts and a trained verifier, SWE-Gym reports 32.0% Best@k versus 42.8% Pass@k, so verifier selection recovers only part of the headroom that extra samples create.",
+      "sourceIds": [
+        "S1"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "With 16 rollouts, the Best@k strategy achieves 32.0% resolve rate compared to 42.8% for Pass@k",
+      "subquestion": "Q3"
+    },
+    {
+      "id": "C2",
+      "statement": "Verifier-based selection improves steadily with more rollouts: 20.6 at 1 rollout to 29.8 at 8 and 32.0 at 16.",
+      "sourceIds": [
+        "S1"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "improving from a resolution rate of 20.6@1 to 29.8@8, and up to 32.0@16",
+      "subquestion": "Q3"
+    },
+    {
+      "id": "C3",
+      "statement": "Without external feedback, LLM self-correction can degrade reasoning performance rather than improve it.",
+      "sourceIds": [
+        "S2"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "LLMs struggle to self-correct their responses without external feedback, and at times, their performance even degrades after self-correction",
+      "subquestion": "Q2"
+    },
+    {
+      "id": "C4",
+      "statement": "Repeated sampling raises coverage along an exponentiated power law, but in domains without an automatic verifier the common verification approaches plateau, so extra samples stop converting into solved problems.",
+      "sourceIds": [
+        "S4"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "In domains without automatic verifiers, we show that common approaches to verification plateau",
+      "subquestion": "Q1"
+    },
+    {
+      "id": "C5",
+      "statement": "AlphaCode's gains came chiefly from large-scale sampling followed by execution-based filtering, which removed more than 99 percent of samples.",
+      "sourceIds": [
+        "S5"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "Example tests help us filter out more than 99% of model samples",
+      "subquestion": "Q1"
+    },
+    {
+      "id": "C6",
+      "statement": "Best-of-N selection with a learned verifier over-optimizes: its proxy score keeps rising while realised reward peaks and then collapses as N grows.",
+      "sourceIds": [
+        "S6"
+      ],
+      "confidence": "medium",
+      "status": "supported",
+      "quote": "Selection by the learned verifier inflates its own proxy score (dashed) while realized gold reward peaks near N=512 and falls to 0.10 at N=2048",
+      "subquestion": "Q4"
+    },
+    {
+      "id": "C7",
+      "statement": "Optimising an imperfect proxy beyond a critical point decreases performance on the true objective, so a selection rule that is only approximately right has a ceiling.",
+      "sourceIds": [
+        "S7"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "increasing optimisation of an imperfect proxy beyond some critical point decreases performance on the true objective",
+      "subquestion": "Q4"
+    },
+    {
+      "id": "C8",
+      "statement": "Repeated sampling on SWE-bench Lite raised the solved fraction from 15.9% with one sample to 56% with 250 samples, above the single-sample state of the art of 43%.",
+      "sourceIds": [
+        "S4"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "the fraction of issues solved with DeepSeek-Coder-V2-Instruct increases from 15.9% with one sample to 56% with 250 samples, outperforming the single-sample state-of-the-art of 43%",
+      "subquestion": "Q1"
+    },
+    {
+      "id": "C9",
+      "statement": "The benefit of extra attempts depends on the verifier: where answers can be automatically verified, coverage gains translate into performance; where they cannot, majority voting and reward models plateau after several hundred samples.",
+      "sourceIds": [
+        "S4"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "In domains like coding and formal proofs, where answers can be automatically verified, these increases in coverage directly translate into improved performance.",
+      "subquestion": "Q1"
+    },
+    {
+      "id": "C10",
+      "statement": "More inference compute has diminishing marginal returns and can actively hurt: extended reasoning is associated with abandoning previously correct answers, and the optimal amount of thinking varies with problem difficulty.",
+      "sourceIds": [
+        "S8"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "models exhibit “overthinking”, where extended reasoning is associated with abandoning previously correct answers",
+      "subquestion": "Q4"
+    },
+    {
+      "id": "C11",
+      "statement": "With a scorer for every attempt, best-of-N saturates quickly and a single large collaborating team stops improving as it grows; parallel small teams beat both at equal budget.",
+      "sourceIds": [
+        "S9"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "Best-of-$ sampling runs many independent agents and keeps the best result but saturates quickly. One large team of collaborating agents can score higher but stops improving as it grows.",
+      "subquestion": "Q3"
+    },
+    {
+      "id": "C12",
+      "statement": "Reward-free selection signals can scale with sample count where self-consistency stalls: self-certainty is reported to scale effectively with N, complement chain-of-thought and generalise to open-ended tasks.",
+      "sourceIds": [
+        "S3"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "self-certainty (1) scales effectively with increasing sample size N, akin to reward models but without the computational overhead; (2) complements chain-of-thought, improving reasoning performance beyond greedy decoding; and (3) generalizes to open-ended tasks where traditional self-consistency methods fall short",
+      "subquestion": "Q5"
+    }
+  ],
+  "gaps": [],
+  "history": [
+    {
+      "at": "2026-11-26T20:03:57.074Z",
+      "event": "init"
+    },
+    {
+      "at": "2026-11-26T20:04:03.213Z",
+      "event": "gate brief: passed"
+    },
+    {
+      "at": "2026-11-26T20:04:03.228Z",
+      "event": "advance -> landscape"
+    },
+    {
+      "at": "2026-11-26T20:04:59.214Z",
+      "event": "gate landscape: passed"
+    },
+    {
+      "at": "2026-11-26T20:04:59.230Z",
+      "event": "advance -> plan"
+    },
+    {
+      "at": "2026-11-26T20:04:59.246Z",
+      "event": "gate plan: passed"
+    },
+    {
+      "at": "2026-11-26T20:04:59.261Z",
+      "event": "advance -> depth"
+    },
+    {
+      "at": "2026-11-26T20:04:59.276Z",
+      "event": "gate depth: passed"
+    },
+    {
+      "at": "2026-11-26T20:04:59.293Z",
+      "event": "advance -> midpoint"
+    },
+    {
+      "at": "2026-11-26T20:05:28.518Z",
+      "event": "gate midpoint: passed"
+    },
+    {
+      "at": "2026-11-26T20:05:28.541Z",
+      "event": "advance -> edges"
+    },
+    {
+      "at": "2026-11-26T20:05:38.613Z",
+      "event": "gate edges: passed"
+    },
+    {
+      "at": "2026-11-26T20:05:38.632Z",
+      "event": "advance -> verify"
+    },
+    {
+      "at": "2026-11-26T20:05:38.651Z",
+      "event": "gate verify: passed"
+    },
+    {
+      "at": "2026-11-26T20:05:44.669Z",
+      "event": "advance -> report"
+    },
+    {
+      "at": "2026-11-26T20:06:41.565Z",
+      "event": "gate report: passed"
+    },
+    {
+      "at": "2026-11-26T20:06:41.581Z",
+      "event": "advance -> redteam"
+    },
+    {
+      "at": "2026-11-26T20:06:46.316Z",
+      "event": "gate redteam: passed"
+    }
+  ]
+}

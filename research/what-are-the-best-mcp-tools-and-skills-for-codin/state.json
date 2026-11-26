@@ -1,0 +1,551 @@
+{
+  "version": 1,
+  "slug": "what-are-the-best-mcp-tools-and-skills-for-codin",
+  "question": "What are the best MCP tools and skills for coding — frontend design, unslopping UI, backend quality, and cybersecurity — as of 20/11/2026?",
+  "createdAt": "2026-11-20T21:24:13.931Z",
+  "updatedAt": "2026-11-20T21:28:58.433Z",
+  "stage": "redteam",
+  "gates": {
+    "brief": {
+      "status": "passed",
+      "note": "brief written: scope, six subquestions, criteria, 25/15/45 budget",
+      "at": "2026-11-20T21:24:23.262Z"
+    },
+    "landscape": {
+      "status": "passed",
+      "note": "map + three narratives + deep-read list",
+      "at": "2026-11-20T21:24:57.563Z"
+    },
+    "plan": {
+      "status": "passed",
+      "note": "six threads, primary targets, 15-page split",
+      "at": "2026-11-20T21:25:07.822Z"
+    },
+    "depth": {
+      "status": "passed",
+      "note": "15 primary sources; coding/frontend/backend/security threads have primary docs",
+      "at": "2026-11-20T21:27:21.052Z"
+    },
+    "midpoint": {
+      "status": "passed",
+      "note": "coverage matrix; 19 claims; decision: stop broad discovery, proceed to edges",
+      "at": "2026-11-20T21:27:33.284Z"
+    },
+    "edges": {
+      "status": "passed",
+      "note": "contradictions: CLI+skills vs MCP token cost; plan limits; deprecated Semgrep repo; OWASP risks",
+      "at": "2026-11-20T21:27:48.565Z"
+    },
+    "verify": {
+      "status": "passed",
+      "note": "check passed: 19 claims, 16 sources, gaps closed; budget over by 2 pages",
+      "at": "2026-11-20T21:28:03.782Z"
+    },
+    "report": {
+      "status": "passed",
+      "note": "report written; check --strict passed; budget warning noted",
+      "at": "2026-11-20T21:28:58.401Z"
+    },
+    "redteam": {
+      "status": "passed",
+      "note": "redteam: falsifiers, counter-arguments, omitted sources and confidence recorded",
+      "at": "2026-11-20T21:28:58.433Z"
+    }
+  },
+  "budget": {
+    "limits": {
+      "searches": 25,
+      "pages": 15,
+      "minutes": 45
+    },
+    "used": {
+      "searches": 13,
+      "pages": 17,
+      "minutes": 0
+    }
+  },
+  "subquestions": [
+    {
+      "id": "Q1",
+      "text": "Which MCP servers lead for general coding, repo, docs and browser verification work?",
+      "evidence": "official repo/docs, maintenance activity, coverage of the edit-test loop"
+    },
+    {
+      "id": "Q2",
+      "text": "Which MCP servers and skills lead for frontend design, UI polish and unslopping?",
+      "evidence": "official docs, skill source, whether they close the screenshot-and-fix loop"
+    },
+    {
+      "id": "Q3",
+      "text": "Which MCP servers and skills lead for backend quality?",
+      "evidence": "database, container, observability and testing tool documentation"
+    },
+    {
+      "id": "Q4",
+      "text": "Which MCP servers and skills lead for cybersecurity practice?",
+      "evidence": "vendor/official docs, OWASP, SAST/SCA/DAST/secrets coverage"
+    },
+    {
+      "id": "Q5",
+      "text": "What selection and security criteria distinguish safe, high-leverage MCP tools from token-hungry or risky ones?",
+      "evidence": "MCP spec, OWASP MCP Top 10, supply-chain and prompt-injection guidance"
+    },
+    {
+      "id": "Q6",
+      "text": "What concrete stack should a DSH user adopt per category, and what are the tradeoffs?",
+      "evidence": "synthesis of primary sources with explicit limits"
+    }
+  ],
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://github.com/github/github-mcp-server",
+      "type": "primary",
+      "title": "GitHub MCP Server",
+      "publisher": "GitHub",
+      "retrieved": "2026-11-20"
+    },
+    {
+      "id": "S2",
+      "url": "https://github.com/microsoft/playwright-mcp",
+      "type": "primary",
+      "title": "Playwright MCP",
+      "publisher": "Microsoft",
+      "retrieved": "2026-11-20"
+    },
+    {
+      "id": "S3",
+      "url": "https://github.com/upstash/context7",
+      "type": "primary",
+      "title": "Context7",
+      "publisher": "Upstash",
+      "retrieved": "2026-11-20"
+    },
+    {
+      "id": "S4",
+      "url": "https://github.com/ChromeDevTools/chrome-devtools-mcp",
+      "type": "primary",
+      "title": "Chrome DevTools MCP",
+      "publisher": "Google",
+      "retrieved": "2026-11-20"
+    },
+    {
+      "id": "S5",
+      "url": "https://github.com/getsentry/toolkit",
+      "type": "primary",
+      "title": "Sentry toolkit (CLI + MCP server)",
+      "publisher": "Sentry",
+      "retrieved": "2026-11-20"
+    },
+    {
+      "id": "S6",
+      "url": "https://ui.shadcn.com/docs/mcp",
+      "type": "primary",
+      "title": "shadcn MCP Server",
+      "publisher": "shadcn",
+      "retrieved": "2026-11-20"
+    },
+    {
+      "id": "S7",
+      "url": "https://github.com/figma/mcp-server-guide",
+      "type": "primary",
+      "title": "Figma MCP server guide",
+      "publisher": "Figma",
+      "retrieved": "2026-11-20"
+    },
+    {
+      "id": "S8",
+      "url": "https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md",
+      "type": "primary",
+      "title": "frontend-design SKILL.md",
+      "publisher": "Anthropic",
+      "retrieved": "2026-11-20"
+    },
+    {
+      "id": "S9",
+      "url": "https://github.com/supabase/mcp",
+      "type": "primary",
+      "title": "Supabase MCP",
+      "publisher": "Supabase",
+      "retrieved": "2026-11-20"
+    },
+    {
+      "id": "S10",
+      "url": "https://github.com/neondatabase/mcp-server-neon",
+      "type": "primary",
+      "title": "Neon MCP Server",
+      "publisher": "Neon",
+      "retrieved": "2026-11-20"
+    },
+    {
+      "id": "S11",
+      "url": "https://github.com/crystaldba/postgres-mcp",
+      "type": "primary",
+      "title": "Postgres MCP Pro",
+      "publisher": "Crystal",
+      "retrieved": "2026-11-20"
+    },
+    {
+      "id": "S12",
+      "url": "https://github.com/semgrep/mcp",
+      "type": "primary",
+      "title": "Semgrep MCP (deprecated repository)",
+      "publisher": "Semgrep",
+      "retrieved": "2026-11-20"
+    },
+    {
+      "id": "S13",
+      "url": "https://github.com/PortSwigger/mcp-server",
+      "type": "primary",
+      "title": "Burp Suite MCP Server",
+      "publisher": "PortSwigger",
+      "retrieved": "2026-11-20"
+    },
+    {
+      "id": "S14",
+      "url": "https://owasp.org/www-project-mcp-top-10/",
+      "type": "primary",
+      "title": "OWASP MCP Top 10",
+      "publisher": "OWASP",
+      "retrieved": "2026-11-20"
+    },
+    {
+      "id": "S15",
+      "url": "https://github.com/obra/superpowers",
+      "type": "primary",
+      "title": "Superpowers",
+      "publisher": "Obra",
+      "retrieved": "2026-11-20"
+    },
+    {
+      "id": "S16",
+      "url": "https://github.com/aquasecurity/trivy-mcp",
+      "type": "primary",
+      "title": "Trivy MCP plugin",
+      "publisher": "Aqua",
+      "retrieved": "2026-11-20"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "statement": "GitHub's official MCP server covers repository reads, issues, pull requests, CI/CD workflow intelligence, and code/security findings.",
+      "sourceIds": [
+        "S1"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "Repository Management: Browse and query code, search files, analyze commits, and understand project structure across any repository you have access to.",
+      "subquestion": "Q1"
+    },
+    {
+      "id": "C2",
+      "statement": "Playwright MCP drives pages through structured accessibility snapshots rather than screenshots, but Microsoft's own docs say CLI+skills are more token-efficient for coding agents and MCP fits persistent, exploratory loops.",
+      "sourceIds": [
+        "S2"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "CLI: Modern coding agents increasingly favor CLI–based workflows exposed as SKILLs over MCP because CLI invocations are more token-efficient",
+      "subquestion": "Q1"
+    },
+    {
+      "id": "C3",
+      "statement": "Context7 supplies version-specific library documentation and code examples, and ships both a CLI+skill mode and an MCP mode.",
+      "sourceIds": [
+        "S3"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "Context7 pulls up-to-date, version-specific documentation and code examples straight from the source",
+      "subquestion": "Q1"
+    },
+    {
+      "id": "C4",
+      "statement": "Chrome DevTools MCP adds performance traces, network/console inspection, screenshots, and reliable browser automation to a coding agent.",
+      "sourceIds": [
+        "S4"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "Get performance insights: Uses Chrome DevTools to record traces and extract actionable performance insights.",
+      "subquestion": "Q1"
+    },
+    {
+      "id": "C5",
+      "statement": "Chrome DevTools MCP collects usage statistics by default and can send trace URLs to Google's CrUX API unless explicitly disabled.",
+      "sourceIds": [
+        "S4"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "Data collection is enabled by default. You can opt-out by passing the --no-usage-statistics flag",
+      "subquestion": "Q5"
+    },
+    {
+      "id": "C6",
+      "statement": "Sentry's MCP service is explicitly scoped to human-in-the-loop coding and debugging workflows, not general Sentry administration.",
+      "sourceIds": [
+        "S5"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "Sentry's MCP service is primarily designed for human-in-the-loop coding agents.",
+      "subquestion": "Q1"
+    },
+    {
+      "id": "C7",
+      "statement": "shadcn MCP lets an agent browse, search, and install components from public, private, or third-party registries using the project's components.json.",
+      "sourceIds": [
+        "S6"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "Browse Components - List all available components, blocks, and templates from any configured registry",
+      "subquestion": "Q2"
+    },
+    {
+      "id": "C8",
+      "statement": "Figma MCP extracts design context and can reuse real components via Code Connect, but Starter/View/Collab seats are limited to six tool calls per month.",
+      "sourceIds": [
+        "S7"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "Users on the Starter plan or with View or Collab seats on paid plans will be limited to up to 6 tool calls per month.",
+      "subquestion": "Q2"
+    },
+    {
+      "id": "C9",
+      "statement": "Anthropic's frontend-design skill is an anti-template design lead: it names generated-design tells and forces a token/plan review before code.",
+      "sourceIds": [
+        "S8"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "For calibration, AI-generated design right now clusters around some traits",
+      "subquestion": "Q2"
+    },
+    {
+      "id": "C10",
+      "statement": "The frontend-design skill's second pass checks the plan against the brief and revises any part that would be the generic default before writing code.",
+      "sourceIds": [
+        "S8"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "Then review that plan against the brief before building",
+      "subquestion": "Q2"
+    },
+    {
+      "id": "C11",
+      "statement": "Supabase's official MCP server supports read-only and feature-scoped URLs that exclude mutating tools.",
+      "sourceIds": [
+        "S9"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "readOnly: When true, excludes mutating tools",
+      "subquestion": "Q3"
+    },
+    {
+      "id": "C12",
+      "statement": "Neon's MCP server is intended for local development and IDE integrations and is explicitly not recommended for production.",
+      "sourceIds": [
+        "S10"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "The Neon MCP Server is intended for local development and IDE integrations only. We do not recommend using the Neon MCP Server in production environments.",
+      "subquestion": "Q3"
+    },
+    {
+      "id": "C13",
+      "statement": "Postgres MCP Pro provides index tuning, EXPLAIN analysis, schema intelligence, and a restricted read-only mode for production.",
+      "sourceIds": [
+        "S11"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "Restricted Mode: Limits operations to read-only transactions and imposes constraints on resource utilization",
+      "subquestion": "Q3"
+    },
+    {
+      "id": "C14",
+      "statement": "The semgrep/mcp repository is deprecated and future MCP updates ship through the official semgrep binary; the server exposes security_check, semgrep_scan, custom-rule scans, and Semgrep AppSec findings.",
+      "sourceIds": [
+        "S12"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "This repository has been deprecated, and further updates to the Semgrep MCP server will be made via the official semgrep binary.",
+      "subquestion": "Q4"
+    },
+    {
+      "id": "C15",
+      "statement": "PortSwigger's Burp MCP extension is official, supports Streamable HTTP, SSE, and a stdio proxy, and asks for approval before sending HTTP requests or reading proxy history by default.",
+      "sourceIds": [
+        "S13"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "By default the extension asks for approval in Burp before sending HTTP requests or reading proxy history",
+      "subquestion": "Q4"
+    },
+    {
+      "id": "C16",
+      "statement": "OWASP's MCP Top 10 covers token mismanagement, scope creep, tool poisoning, supply-chain tampering, command injection, prompt injection, weak auth, missing audit, shadow servers, and context over-sharing.",
+      "sourceIds": [
+        "S14"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "MCP03:2025 - Tool Poisoning",
+      "subquestion": "Q5"
+    },
+    {
+      "id": "C17",
+      "statement": "OWASP classifies MCP tool poisoning as a top-10 risk, distinct from prompt injection via contextual payloads and from scope creep.",
+      "sourceIds": [
+        "S14"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "MCP02:2025 - Privilege Escalation via Scope Creep",
+      "subquestion": "Q5"
+    },
+    {
+      "id": "C18",
+      "statement": "Superpowers packages a software-development methodology — spec interrogation, implementation planning, red/green TDD, and subagent-driven development — as composable agent skills.",
+      "sourceIds": [
+        "S15"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "It emphasizes true red/green TDD, YAGNI (You Aren't Gonna Need It), and DRY.",
+      "subquestion": "Q5"
+    },
+    {
+      "id": "C19",
+      "statement": "Aqua's Trivy MCP plugin adds filesystem, container-image, and remote-repository vulnerability/misconfiguration scanning to an agent.",
+      "sourceIds": [
+        "S16"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "Filesystem scanning for local projects",
+      "subquestion": "Q4"
+    },
+    {
+      "id": "C20",
+      "statement": "Context7's library documentation is community-contributed, and the project disclaims guarantees of accuracy, completeness, or security.",
+      "sourceIds": [
+        "S3"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "Context7 projects are community-contributed and while we strive to maintain high quality, we cannot guarantee the accuracy, completeness, or security of all library documentation.",
+      "subquestion": "Q1"
+    }
+  ],
+  "gaps": [
+    {
+      "id": "G1",
+      "kind": "missing",
+      "note": "No primary evidence for Magic UI/21st MCP",
+      "status": "closed",
+      "next": "search official docs or omit",
+      "evidence": "Omitted from ranked picks: no primary Magic UI/21st docs read."
+    },
+    {
+      "id": "G2",
+      "kind": "missing",
+      "note": "No verified official Snyk MCP endpoint (404)",
+      "status": "closed",
+      "next": "use Trivy for SCA/container, omit Snyk",
+      "evidence": "Omitted Snyk: official endpoint returned 404; Trivy covers container/filesystem, dependency scanning remains a CI concern."
+    },
+    {
+      "id": "G3",
+      "kind": "missing",
+      "note": "Docker MCP catalog not read",
+      "status": "closed",
+      "next": "omit; Trivy covers container scan",
+      "evidence": "Omitted Docker MCP: not read; Trivy covers image scanning."
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-20T21:24:13.931Z",
+      "event": "init"
+    },
+    {
+      "at": "2026-11-20T21:24:23.262Z",
+      "event": "gate brief: passed"
+    },
+    {
+      "at": "2026-11-20T21:24:23.278Z",
+      "event": "advance -> landscape"
+    },
+    {
+      "at": "2026-11-20T21:24:57.563Z",
+      "event": "gate landscape: passed"
+    },
+    {
+      "at": "2026-11-20T21:24:57.579Z",
+      "event": "advance -> plan"
+    },
+    {
+      "at": "2026-11-20T21:25:07.822Z",
+      "event": "gate plan: passed"
+    },
+    {
+      "at": "2026-11-20T21:25:07.837Z",
+      "event": "advance -> depth"
+    },
+    {
+      "at": "2026-11-20T21:27:21.052Z",
+      "event": "gate depth: passed"
+    },
+    {
+      "at": "2026-11-20T21:27:21.067Z",
+      "event": "advance -> midpoint"
+    },
+    {
+      "at": "2026-11-20T21:27:33.284Z",
+      "event": "gate midpoint: passed"
+    },
+    {
+      "at": "2026-11-20T21:27:33.298Z",
+      "event": "advance -> edges"
+    },
+    {
+      "at": "2026-11-20T21:27:48.565Z",
+      "event": "gate edges: passed"
+    },
+    {
+      "at": "2026-11-20T21:27:48.581Z",
+      "event": "advance -> verify"
+    },
+    {
+      "at": "2026-11-20T21:28:03.782Z",
+      "event": "gate verify: passed"
+    },
+    {
+      "at": "2026-11-20T21:28:03.799Z",
+      "event": "advance -> report"
+    },
+    {
+      "at": "2026-11-20T21:28:58.401Z",
+      "event": "gate report: passed"
+    },
+    {
+      "at": "2026-11-20T21:28:58.416Z",
+      "event": "advance -> redteam"
+    },
+    {
+      "at": "2026-11-20T21:28:58.433Z",
+      "event": "gate redteam: passed"
+    }
+  ]
+}
