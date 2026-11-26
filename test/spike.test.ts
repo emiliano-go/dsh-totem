@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { MAX_APPROACHES, MIN_APPROACHES, buildBrief, harnessFileName, measurementCommand, inspectDir, parseCriteria, rank, readMeasurements, renderSpike, resolveHarness, runCommand, runSpike } from '../src/spike.ts'
+import { MAX_APPROACHES, MIN_APPROACHES, buildBrief, harnessFileName, measurementCommand, parsePassCount, inspectDir, parseCriteria, rank, readMeasurements, renderSpike, resolveHarness, runCommand, runSpike } from '../src/spike.ts'
 
 const criteria = [
   { name: 'p95_ms', direction: 'min' as const, weight: 1 },
@@ -237,6 +237,16 @@ describe('the caller proposes the approaches', () => {
     expect(MIN_APPROACHES).toBe(3)
     expect(MAX_APPROACHES).toBe(5)
   })
+})
+
+describe('a sound oracle', () => {
+  test('reads the pass count from the usual test-runner shapes', () => {
+    expect(parsePassCount('12 passed, 3 failed')).toBe(12)
+    expect(parsePassCount('ok 7 tests')).toBe(7)
+    expect(parsePassCount('5 passing (120ms)')).toBe(5)
+    expect(parsePassCount('nothing useful')).toBeUndefined()
+  })
+
 })
 
 describe('the measurement command', () => {

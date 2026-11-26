@@ -68,6 +68,8 @@ export interface SpikeRun {
   readonly question: string
   readonly criteria: SpikeCriterion[]
   readonly measure?: string
+  /** The sound oracle command, when one scored the candidates. */
+  readonly verify?: string
   /** True when one harness-owned benchmark measured every candidate. */
   readonly comparable: boolean
   readonly timeboxMs: number
@@ -113,6 +115,7 @@ export function buildBrief(input: {
   approach: string
   criteria: SpikeCriterion[]
   measure?: string
+  verify?: string
   dir: string
   timeboxMs: number
   contract?: string
@@ -394,6 +397,26 @@ export function measurementCommand(input: { harnessed: boolean; runner?: string;
 }
 
 /**
+ * How many assertions a sound oracle reports as passed. Test runners print
+ * "12 passed", "12 passed, 3 failed", "ok 12 tests", so read the first pass
+ * count in the output; undefined means the command said nothing useful.
+ * @param output - combined stdout and stderr of the verification command.
+ */
+export function parsePassCount(output: string): number | undefined {
+  const patterns = [
+    /(\d+)\s+passed/i,
+    /(\d+)\s+passing/i,
+    /(\d+)\s+tests?\s+(?:ok|passed)/i,
+    /ok\s+(\d+)\s+tests?/i,
+  ]
+  for (const pattern of patterns) {
+    const match = pattern.exec(output)
+    if (match !== null) return Number(match[1])
+  }
+  return undefined
+}
+
+/**
  * The filename the shared benchmark is written as. A caller measuring a Python
  * project runs `python3 bench.py`, so the file has to be bench.py, not bench.ts.
  * @param runner - the command that runs the harness, if the caller supplied one.
@@ -502,6 +525,12 @@ export async function runSpike(
   const workspace = options.workspace ?? process.cwd()
   const root = join(workspace, '.spike', id)
 
+  // Selecting on the oracle is the point of `verify`; it is weighted above the
+  // caller's own criteria because it is the only sound signal available.
+  const criteria = (options.verify ?? '').trim().length > 0
+    && !options.criteria.some(criterion => criterion.name === 'verify_passed')
+    ? [...options.criteria, { name: 'verify_passed', direction: 'max' as const, weight: 10 }]
+    : options.criteria
   const harnessSource = await resolveHarness(options.harness)
   const results: SpikeCandidate[] = []
   await Promise.all(
@@ -587,6 +616,14 @@ export async function runSpike(
         measurements = { ...aggregated.measurements, ...booleans }
         if (Object.keys(aggregated.spread).length > 0) spread = aggregated.spread
       }
+      // A sound oracle (the repository's own suite) outranks a caller-written
+      // harness: it is the signal the literature says sampling actually scales on.
+      const verify = (options.verify ?? '').trim()
+      if (verify.length > 0) {
+        const raw = await runCommand(verify, dir, Math.min(timeboxMs, 300_000))
+        const passed = parsePassCount(raw)
+        measurements = { ...measurements, verify_passed: passed ?? 0, verify_ok: passed !== undefined }
+      }
       results.push({
         ...candidate,
         ...stats,
@@ -602,18 +639,18 @@ export async function runSpike(
     ...candidate,
     measurements: { files: candidate.files, loc: candidate.loc, ...candidate.measurements },
   }))
-  const ranking = rank(measured, options.criteria)
+  const ranking = rank(measured, criteria)
   const qualified = ranking.filter(entry => entry.qualified)
   const pareto = measured
     .filter(candidate => qualified.some(entry => entry.id === candidate.id))
     .filter(candidate => !measured.some(other =>
       other.id !== candidate.id
       && qualified.some(entry => entry.id === other.id)
-      && dominates(other.measurements, candidate.measurements, options.criteria)))
+      && dominates(other.measurements, candidate.measurements, criteria)))
     .map(candidate => candidate.id)
   // How much of the gap between the top two could be noise: the median relative
   // spread of every ranked criterion, weighted like the criteria themselves.
-  const ranked = options.criteria.filter(criterion => criterion.direction !== 'pass')
+  const ranked = criteria.filter(criterion => criterion.direction !== 'pass')
   const noise = ranked.reduce((sum, criterion) => {
     const ratios = measured
       .map(candidate => candidate.spread?.[criterion.name])

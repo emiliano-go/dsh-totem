@@ -8,9 +8,12 @@ import { approvals } from './approvals.ts'
  * Render three ascending bars at the sidebar's requested size.
  * @param props - the sidebar icon share.
  */
+const needsReview = (state: { items: Array<{ queued?: boolean }> }): number =>
+  state.items.filter((item) => !item.queued).length
+
 export function OverviewIcon({ size = 18 }: PropsRuntime<'sidebar.panellist'>) {
-  const [pending, setPending] = useState(approvals.getState().items.length)
-  useEffect(() => approvals.subscribe(state => setPending(state.items.length)), [])
+  const [pending, setPending] = useState(needsReview(approvals.getState()))
+  useEffect(() => approvals.subscribe(state => setPending(needsReview(state))), [])
 
   return (
     <span style={{ position: 'relative', display: 'inline-flex' }}>
@@ -21,7 +24,7 @@ export function OverviewIcon({ size = 18 }: PropsRuntime<'sidebar.panellist'>) {
       </svg>
       {pending > 0 ? (
         <span
-          title={`${pending} draft${pending === 1 ? '' : 's'} waiting`}
+          title={`${pending} draft${pending === 1 ? '' : 's'} to review`}
           style={{
             position: 'absolute',
             top: -2,
@@ -30,7 +33,7 @@ export function OverviewIcon({ size = 18 }: PropsRuntime<'sidebar.panellist'>) {
             height: 8,
             borderRadius: '50%',
             background: '#e6b325',
-            boxShadow: '0 0 0 2px var(--dsw-alias-bg-primary, #111)',
+            boxShadow: '0 0 0 2px Canvas',
           }}
         />
       ) : null}
