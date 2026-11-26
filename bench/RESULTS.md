@@ -310,6 +310,25 @@ literature predicts.
 Caveat: arm A read `/data/bench/pro/test_patch.patch` (left in the parent directory
 by me), so its pass is not clean evidence of reasoning-only success.
 
+## 22 Clean matched pair: ansible, no oracle leak
+
+Patch moved to `/data/bench/hidden/` (mode 700), fresh checkouts, both briefs told
+the arms the graded suite is not on the machine. Protocol: B runs only if A fails.
+
+| arm | visible | hidden | verdict |
+| --- | --- | --- | --- |
+| A, no spike | 93 passed | **14 failed, 115 passed** | fail |
+| B, spike ranked by the repo suite | 93 passed | **19 failed, 110 passed** | fail |
+
+B's own record shows why: its spike reported `unresolved` with all three candidates
+at 93/93 on the verify command. The oracle was sound but saturated, so it carried
+no ranking signal and the tie fell back to the agent's own cases. B then chose the
+same strict reading as A and diverged further, and it paid for three candidates
+out of a 45-minute budget.
+
+So the earlier "A passed 129/129" was the leak, not reasoning: with the patch out
+of reach, A fails the same edge cases.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
