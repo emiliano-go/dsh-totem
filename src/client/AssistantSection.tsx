@@ -4,6 +4,12 @@ import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AssistantFace, AssistantState, AssistantTab } from './assistant-controller.ts'
 
+const SURFACE = 'color-mix(in oklab, currentColor 5%, transparent)'
+const HAIRLINE = 'color-mix(in oklab, currentColor 16%, transparent)'
+const INSET = 'color-mix(in oklab, currentColor 12%, transparent)'
+const MUTED_TEXT = 'color-mix(in oklab, currentColor 62%, transparent)'
+
+
 const TABS: { id: AssistantTab; label: string }[] = [
   { id: 'memory', label: 'Memory' },
   { id: 'candidates', label: 'Candidates' },
@@ -20,7 +26,7 @@ const FIELD: React.CSSProperties = {
   maxWidth: 520,
   padding: '6px 8px',
   borderRadius: 6,
-  border: '1px solid var(--dsw-alias-border, #3a3a3a)',
+  border: '1px solid HAIRLINE',
   background: 'var(--dsw-alias-bg-secondary, transparent)',
   color: 'inherit',
   fontSize: 13,
@@ -31,7 +37,7 @@ const MUTED: React.CSSProperties = {
   margin: 0,
   fontSize: 12,
   lineHeight: 1.5,
-  color: 'var(--dsw-alias-text-secondary, #9a9a9a)',
+  color: 'MUTED_TEXT',
 }
 
 const CARD: React.CSSProperties = {
@@ -317,7 +323,7 @@ export function AssistantSection(props: AssistantSectionProps) {
             {state.verifyRules.map(rule => (
               <div key={rule.id} style={CARD}>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>
-                  <code style={{ fontSize: 12 }}>{rule.id}</code> · <span style={{ fontSize: 11, color: rule.severity === 'high' ? 'var(--dsw-alias-state-error-primary, #e5484d)' : 'var(--dsw-alias-text-secondary, #9a9a9a)' }}>{rule.severity}</span>
+                  <code style={{ fontSize: 12 }}>{rule.id}</code> · <span style={{ fontSize: 11, color: rule.severity === 'high' ? 'var(--dsw-alias-state-error-primary, #e5484d)' : 'MUTED_TEXT' }}>{rule.severity}</span>
                 </div>
                 <div style={{ fontSize: 13 }}>{rule.description}</div>
               </div>

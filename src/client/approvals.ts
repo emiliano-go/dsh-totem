@@ -7,6 +7,7 @@ export interface ApprovalItem {
   draft: string
   url: string
   attempts: number
+  queued?: boolean
   lastError?: string
 }
 
@@ -26,6 +27,7 @@ class ApprovalsStore {
   private timer: ReturnType<typeof setInterval> | undefined
   private token: () => string = () => ''
   private inFlight = false
+  private retry: ReturnType<typeof setTimeout> | undefined
 
   /** Point the store at the Totem settings token. */
   configure(token: () => string): void {
@@ -41,7 +43,9 @@ class ApprovalsStore {
 
   stop(): void {
     if (this.timer !== undefined) clearInterval(this.timer)
+    if (this.retry !== undefined) clearTimeout(this.retry)
     this.timer = undefined
+    this.retry = undefined
   }
 
   getState(): ApprovalsState {
@@ -60,6 +64,14 @@ class ApprovalsStore {
 
   async refresh(): Promise<void> {
     if (this.inFlight) return
+    // The settings document can arrive after the first paint; polling with an
+    // empty token only produces a misleading "unauthorized".
+    if (!this.token()) {
+      this.emit({ status: 'loading' })
+      if (this.retry !== undefined) clearTimeout(this.retry)
+      this.retry = setTimeout(() => { void this.refresh() }, 1500)
+      return
+    }
     this.inFlight = true
     try {
       const response = await fetch('/totem/approvals', {
@@ -99,7 +111,7 @@ class ApprovalsStore {
     }
   }
 
-  async act(key: string, action: 'ok' | 're' | 'no'): Promise<void> {
+  async act(key: string, action: 'ok' | 're' | 'no'): Promise<boolean> {
     try {
       const response = await fetch('/totem/approvals', {
         method: 'POST',
@@ -109,11 +121,13 @@ class ApprovalsStore {
       if (!response.ok) {
         const body = (await response.json()) as { error?: string }
         this.emit({ status: 'error', error: body.error || `HTTP ${response.status}` })
-        return
+        return false
       }
       await this.refresh()
+      return true
     } catch (cause) {
       this.emit({ status: 'error', error: cause instanceof Error ? cause.message : String(cause) })
+      return false
     }
   }
 }

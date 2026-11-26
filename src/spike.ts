@@ -141,7 +141,7 @@ export function buildBrief(input: {
       '```',
       input.harnessed === true
         ? `The benchmark is provided by the harness (${measurementCommand({ harnessed: true, ...input.runner === undefined ? {} : { runner: input.runner }, ...input.harness === undefined ? {} : { harness: input.harness } })}), identical for every candidate, and restored before measuring. Do not edit it and do not write your own benchmark.`
-        : `Do not write your own benchmark if a bench.ts is present.`,
+        : `Do not write your own benchmark if a ${harnessFileName(input.runner)} is present.`,
     )
   } else if (input.measure !== undefined && input.measure.trim().length > 0) {
     lines.push(
@@ -394,6 +394,17 @@ export function measurementCommand(input: { harnessed: boolean; runner?: string;
 }
 
 /**
+ * The filename the shared benchmark is written as. A caller measuring a Python
+ * project runs `python3 bench.py`, so the file has to be bench.py, not bench.ts.
+ * @param runner - the command that runs the harness, if the caller supplied one.
+ */
+export function harnessFileName(runner?: string): string {
+  const parts = (runner ?? '').trim().split(/\s+/u)
+  const last = parts[parts.length - 1] ?? ''
+  return /^[\w.-]+\.(?:py|sh|ts|js|rb|pl)$/u.test(last) ? last : 'bench.ts'
+}
+
+/**
  * Run a command in a directory with a hard timeout.
  *
  * `node:child_process`, not `Bun.spawn`: the host may be Node, where `Bun` does
@@ -514,7 +525,7 @@ export async function runSpike(
         const commented = options.contract.trim().split('\n').map(line => `// ${line}`).join('\n')
         await writeFile(join(dir, 'impl.ts'), `// Implement the contract below. The harness imports this module.\n//\n${commented}\n`, 'utf8')
       }
-      if (harnessed) await writeFile(join(dir, 'bench.ts'), harnessSource as string, 'utf8')
+      if (harnessed) await writeFile(join(dir, harnessFileName(options.runner)), harnessSource as string, 'utf8')
 
       const controller = new AbortController()
       const started = Date.now()
@@ -555,7 +566,7 @@ export async function runSpike(
       candidate.elapsedMs = Date.now() - started
       const stats = await inspectDir(dir)
       let measurements: Record<string, number | boolean> | undefined
-      if (harnessed) await writeFile(join(dir, 'bench.ts'), harnessSource as string, 'utf8')
+      if (harnessed) await writeFile(join(dir, harnessFileName(options.runner)), harnessSource as string, 'utf8')
       const command = measurementCommand({ harnessed, ...options.runner === undefined ? {} : { runner: options.runner }, ...options.measure === undefined ? {} : { measure: options.measure }, ...options.harness === undefined ? {} : { harness: options.harness } })
       let spread: Record<string, SpikeSpread> | undefined
       if (command !== undefined && command.trim().length > 0) {

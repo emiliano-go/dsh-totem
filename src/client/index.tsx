@@ -42,8 +42,11 @@ export function apply(ctx: ClientContext): void {
   // Hover TLDR: the Host generates it at turn end; the card only reads it.
   // Reading the token lazily keeps a settings edit effective without a reload.
   const tldr = new TldrApi(() => {
-    const value = (ctx.configForms.get('totem').getSnapshot().value ?? {}) as { apiToken?: string }
-    return value.apiToken ?? ''
+    const value = (ctx.configForms.get('totem').getSnapshot().value ?? {}) as {
+      apiToken?: string
+      totem?: { apiToken?: string }
+    }
+    return value.apiToken ?? value.totem?.apiToken ?? ''
   })
   ctx.effect(() => (ctx.slots as unknown as {
     inject: (name: string, register: () => unknown) => () => void
@@ -184,8 +187,11 @@ export function apply(ctx: ClientContext): void {
   // Release approvals: one polling store feeds the Overview block and the
   // sidebar dot, so both stay in step without a second request.
   approvals.configure(() => {
-    const value = (ctx.configForms.get('totem').getSnapshot().value ?? {}) as { apiToken?: string }
-    return value.apiToken ?? ''
+    const value = (ctx.configForms.get('totem').getSnapshot().value ?? {}) as {
+      apiToken?: string
+      totem?: { apiToken?: string }
+    }
+    return value.apiToken ?? value.totem?.apiToken ?? ''
   })
   ctx.effect(() => {
     approvals.start()

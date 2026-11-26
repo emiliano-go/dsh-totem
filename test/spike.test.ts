@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { MAX_APPROACHES, MIN_APPROACHES, buildBrief, measurementCommand, inspectDir, parseCriteria, rank, readMeasurements, renderSpike, resolveHarness, runCommand, runSpike } from '../src/spike.ts'
+import { MAX_APPROACHES, MIN_APPROACHES, buildBrief, harnessFileName, measurementCommand, inspectDir, parseCriteria, rank, readMeasurements, renderSpike, resolveHarness, runCommand, runSpike } from '../src/spike.ts'
 
 const criteria = [
   { name: 'p95_ms', direction: 'min' as const, weight: 1 },
@@ -251,6 +251,13 @@ describe('the measurement command', () => {
   test('the interpreter is inferred from a python or shell harness', () => {
     expect(measurementCommand({ harnessed: true, harness: 'bench.py' })).toBe('python3 bench.py')
     expect(measurementCommand({ harnessed: true, harness: 'bench.sh' })).toBe('bash bench.sh')
+  })
+
+  test('the harness file is named for the runner', () => {
+    expect(harnessFileName('python3 bench.py')).toBe('bench.py')
+    expect(harnessFileName('bash bench.sh')).toBe('bench.sh')
+    expect(harnessFileName('bun run bench.ts')).toBe('bench.ts')
+    expect(harnessFileName(undefined)).toBe('bench.ts')
   })
 
   test('an unharnessed run uses the measure command', () => {

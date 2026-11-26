@@ -4,6 +4,12 @@ import { SettingsForm } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import { parseRouteKey, routeKey, type TotemMemoryCardFace } from './controller.ts'
 
+const SURFACE = 'color-mix(in oklab, currentColor 5%, transparent)'
+const HAIRLINE = 'color-mix(in oklab, currentColor 16%, transparent)'
+const INSET = 'color-mix(in oklab, currentColor 12%, transparent)'
+const MUTED_TEXT = 'color-mix(in oklab, currentColor 62%, transparent)'
+
+
 const LABELS = {
   unavailable: 'This deployment does not serve the Totem settings row.',
   readOnly: 'This deployment stores settings read-only.',
@@ -17,7 +23,7 @@ const SELECT_STYLE = {
   maxWidth: 460,
   padding: '6px 8px',
   borderRadius: 6,
-  border: '1px solid var(--dsw-alias-border, #3a3a3a)',
+  border: '1px solid HAIRLINE',
   background: 'var(--dsw-alias-bg-secondary, transparent)',
   color: 'inherit',
   fontSize: 13,
@@ -27,7 +33,7 @@ const HELP_STYLE = {
   margin: 0,
   fontSize: 12,
   lineHeight: 1.5,
-  color: 'var(--dsw-alias-text-secondary, #9a9a9a)',
+  color: 'MUTED_TEXT',
 } as const
 
 /** Framework-derived props for the Totem settings card. */

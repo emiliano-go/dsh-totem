@@ -5,6 +5,12 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { OverviewData, OverviewResult, OverviewSource } from './overview.ts'
 import { ApprovalsSection } from './ApprovalsSection.tsx'
 
+const SURFACE = 'color-mix(in oklab, currentColor 5%, transparent)'
+const HAIRLINE = 'color-mix(in oklab, currentColor 16%, transparent)'
+const INSET = 'color-mix(in oklab, currentColor 12%, transparent)'
+const MUTED_TEXT = 'color-mix(in oklab, currentColor 62%, transparent)'
+
+
 export interface OverviewFace {
   load: (source?: OverviewSource) => Promise<OverviewResult>
   importHistory: () => Promise<OverviewResult>
@@ -22,26 +28,26 @@ const PAGE = {
 
 const INNER = { width: '100%', maxWidth: 1040, display: 'flex', flexDirection: 'column', gap: 22 } as const
 
-const MUTED = { color: 'var(--dsw-alias-text-secondary, #9a9a9a)', fontSize: 12 } as const
+const MUTED = { color: 'MUTED_TEXT', fontSize: 12 } as const
 
 const CARD = {
-  border: '1px solid var(--dsw-alias-border, #2e2e2e)',
+  border: '1px solid HAIRLINE',
   borderRadius: 12,
-  background: 'var(--dsw-alias-bg-secondary, #161616)',
+  background: 'SURFACE',
   padding: '16px 18px',
 } as const
 
 const CHIP = {
-  border: '1px solid var(--dsw-alias-border, #3a3a3a)',
+  border: '1px solid HAIRLINE',
   borderRadius: 999,
   padding: '3px 10px',
   fontSize: 11,
   cursor: 'pointer',
   background: 'transparent',
-  color: 'var(--dsw-alias-text-secondary, #9a9a9a)',
+  color: 'MUTED_TEXT',
 } as const
 
-const COLORS = ['var(--dsw-alias-bg-tertiary, #1b1f24)', '#0e3a5c', '#0b5cad', '#1d8cf8', '#4cb3ff'] as const
+const COLORS = ['INSET', '#0e3a5c', '#0b5cad', '#1d8cf8', '#4cb3ff'] as const
 const SOURCES: { id: OverviewSource; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'dsh', label: 'dsh' },
@@ -254,7 +260,7 @@ export function OverviewPage(props: OverviewPageProps) {
                 key={option.id}
                 type="button"
                 onClick={() => { setSource(option.id) }}
-                style={{ ...CHIP, ...source === option.id ? { background: 'var(--dsw-alias-bg-tertiary, #222)', color: 'inherit' } : {} }}
+                style={{ ...CHIP, ...source === option.id ? { background: 'INSET', color: 'inherit' } : {} }}
               >
                 {option.label}
               </button>
@@ -267,7 +273,7 @@ export function OverviewPage(props: OverviewPageProps) {
             <button type="button" style={CHIP} onClick={() => { void props.load(source).then(setResult) }}>Refresh</button>
             <button
               type="button"
-              style={{ ...CHIP, color: 'inherit', borderColor: 'var(--dsw-alias-border, #555)' }}
+              style={{ ...CHIP, color: 'inherit', borderColor: 'HAIRLINE' }}
               disabled={importing}
               onClick={() => { void runImport() }}
             >
@@ -290,7 +296,7 @@ export function OverviewPage(props: OverviewPageProps) {
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, paddingTop: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                   <span style={{ fontSize: 56, lineHeight: 1, fontWeight: 650, letterSpacing: '-0.03em' }}>{digits}</span>
-                  {unit === '' ? null : <span style={{ fontSize: 26, fontWeight: 600, color: 'var(--dsw-alias-text-secondary, #9a9a9a)' }}>{unit}</span>}
+                  {unit === '' ? null : <span style={{ fontSize: 26, fontWeight: 600, color: 'MUTED_TEXT' }}>{unit}</span>}
                 </div>
                 <span style={{ ...MUTED, fontSize: 12 }}>Lifetime tokens</span>
               </div>
@@ -323,7 +329,7 @@ export function OverviewPage(props: OverviewPageProps) {
                         key={option}
                         type="button"
                         onClick={() => { setMode(option) }}
-                        style={{ ...CHIP, ...mode === option ? { background: 'var(--dsw-alias-bg-tertiary, #222)', color: 'inherit' } : {} }}
+                        style={{ ...CHIP, ...mode === option ? { background: 'INSET', color: 'inherit' } : {} }}
                       >
                         {option === 'daily' ? 'Daily' : 'Cumulative'}
                       </button>
@@ -345,7 +351,7 @@ export function OverviewPage(props: OverviewPageProps) {
                             <span style={{ width: 190, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {model.model.length > 0 ? model.model : model.provider}
                             </span>
-                            <div style={{ flex: 1, height: 7, borderRadius: 4, background: 'var(--dsw-alias-bg-tertiary, #222)', overflow: 'hidden' }}>
+                            <div style={{ flex: 1, height: 7, borderRadius: 4, background: 'INSET', overflow: 'hidden' }}>
                               <div style={{ width: `${Math.max(2, Math.round(share * 100))}%`, height: '100%', background: '#1d8cf8' }} />
                             </div>
                             <span style={{ ...MUTED, fontVariantNumeric: 'tabular-nums', width: 70, textAlign: 'right' }}>{compact(model.tokens)}</span>
