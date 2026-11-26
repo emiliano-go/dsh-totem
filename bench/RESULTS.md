@@ -263,6 +263,29 @@ First eval attempt scored 0 with `compile_failed` because the brief said "make"
 while ProgramBench runs `compile.sh` and stashes `./executable`. That was a harness
 error, not an agent failure; with the real contract the arm passed.
 
+## 20 ProgramBench: matched A/B pairs
+
+Both arms, same model, same task, same contract, same budget, pristine cleanroom
+workspace each. Official `programbench eval` scores; a task is solved only when
+the whole hidden suite passes.
+
+| task | A, no spike | B, spike | solved |
+| --- | --- | --- | --- |
+| cmatrix | ✅ 756/769 | ✅ 768/769 | both |
+| dust | 73 | 72 | neither |
+| xsv | 93 | 87 | neither |
+| sd | 98 | 98 | neither |
+| figlet | 82 | 85 | neither |
+
+No task was found where the plain arm fails and the spike arm succeeds. The spike
+arm won once by 3 points (figlet), tied once, and lost three times. Both arms are
+strongly correlated: they solve the same easy task and fail the same hard ones,
+and on the near-miss (`sd`, 14 and 19 failing tests) the plain arm had fewer.
+
+The running cost of the tournament is visible here: each spike run spent 10-15 of
+its 70 minutes pricing candidates before writing code, and four times out of five
+that time did not pay for itself.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
