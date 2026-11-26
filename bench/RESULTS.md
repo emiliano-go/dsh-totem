@@ -211,6 +211,22 @@ Build `/app/gates.txt`, under 32000 lines, so the supplied gate simulator (only
 | --- | --- | --- | --- |
 | A reasoning only | exploited the simulator's index-ordered relaxation: low-index copies of high-index signals act as flip-flops, so a combinational cone re-settles every step; 16 unrolled restoring-sqrt stages (threshold `(root<<2)|1`), then a state machine advancing the Fibonacci pair by 4 per step with a freeze counter | 3640 lines; 5447 host cases and 304 in-container cases, 0 mismatches | pass |
 
+## 17 Terminal-Bench: sparql-university
+
+Write a SPARQL query returning full professors who work in a department of an EU
+university and in a department with >10 enrolled students, graded against a hidden
+test graph.
+
+| arm | result | grade |
+| --- | --- | --- |
+| A reasoning only | 63-line query, exact variable names, existential criteria, countries aggregated over all departments | 3 passed | pass |
+
+**Validity caveat.** The arm was given a script that runs the verifier, so pytest's
+assertion diff was visible to it — it says it reverse-engineered the result shape
+and even the expected rows from that diff. Real Terminal-Bench does not mount the
+tests during the agent phase. From the next task on, the arm gets no verifier and
+grading happens after it stops.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
