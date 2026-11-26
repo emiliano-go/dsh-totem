@@ -286,6 +286,30 @@ The running cost of the tournament is visible here: each spike run spent 10-15 o
 its 70 minutes pricing candidates before writing code, and four times out of five
 that time did not pay for itself.
 
+## 21 Sound oracle: ansible against the repository's own suite
+
+The prediction from the research was that a tournament pays only when a sound
+verifier scores the attempts. `spike` now takes `verify`, runs it in every
+candidate directory and weights its pass count above the caller's criteria.
+
+Task: SWE-bench Pro `human_to_bytes`. Visible oracle: the repo's pre-patch suite
+(93 tests). Hidden grader: the patched suite (129 tests).
+
+| arm | visible | hidden | grade |
+| --- | --- | --- | --- |
+| A, no spike | 93 passed | **129 passed** | pass |
+| B, spike ranked by the repo suite | 93 passed | **113 passed, 16 failed** | fail |
+
+The oracle was sound but **saturated**: all three candidates passed 93/93, so it
+could not rank them and the tournament fell back to the agent's own derived cases.
+That tie-break chose a candidate stricter than the reference — rejecting leading
+whitespace, word units and `.5`/`1.` — which the visible suite never exercised and
+the hidden suite does. Sixteen failures, in the direction the overoptimisation
+literature predicts.
+
+Caveat: arm A read `/data/bench/pro/test_patch.patch` (left in the parent directory
+by me), so its pass is not clean evidence of reasoning-only success.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
