@@ -202,6 +202,15 @@ up to permutation and scaling.
 | --- | --- | --- | --- |
 | A reasoning only | scan random lines for kinks; each kink's location follows in closed form from the two pure slopes, and the gradient difference across it is `+-A2[i]*A1[i,:]`; cluster those directions | 30x10 recovered, ratio error 2e-7 against a 1e-4 bar | pass |
 
+## 16 Terminal-Bench: circuit-fibsqrt
+
+Build `/app/gates.txt`, under 32000 lines, so the supplied gate simulator (only
+`& | ^ ~` and constants) prints `fib(isqrt(N)) mod 2^32` for N on stdin.
+
+| arm | approach | result | grade |
+| --- | --- | --- | --- |
+| A reasoning only | exploited the simulator's index-ordered relaxation: low-index copies of high-index signals act as flip-flops, so a combinational cone re-settles every step; 16 unrolled restoring-sqrt stages (threshold `(root<<2)|1`), then a state machine advancing the Fibonacci pair by 4 per step with a freeze counter | 3640 lines; 5447 host cases and 304 in-container cases, 0 mismatches | pass |
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
