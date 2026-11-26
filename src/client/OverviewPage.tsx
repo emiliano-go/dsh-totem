@@ -213,14 +213,14 @@ function UsageMeterRow({ label, meter }: { label: string; meter: KeyUsageMeter |
   const percent = meter === null ? 0 : Math.max(0, Math.min(100, meter.percent))
   const limited = meter?.status === 'rate-limited' || percent >= 100
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ fontSize: 11, fontWeight: 600 }}>{label}</span>
-        <span style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', color: limited ? '#f87171' : 'inherit' }}>
+        <span style={{ fontSize: 12, fontWeight: 600 }}>{label}</span>
+        <span style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', color: limited ? '#f87171' : 'inherit' }}>
           {meter === null ? '—' : `${percent}%`}
         </span>
       </div>
-      <div style={{ height: 6, borderRadius: 4, background: 'INSET', overflow: 'hidden' }}>
+      <div style={{ height: 8, borderRadius: 4, background: 'INSET', overflow: 'hidden' }}>
         <div style={{
           width: `${percent}%`,
           height: '100%',
@@ -228,7 +228,7 @@ function UsageMeterRow({ label, meter }: { label: string; meter: KeyUsageMeter |
           background: limited ? '#f87171' : '#1d8cf8',
         }} />
       </div>
-      <span style={{ ...MUTED, fontSize: 10 }}>{meter === null ? 'no data' : resetLabel(meter.resetsAt)}</span>
+      <span style={{ ...MUTED, fontSize: 11 }}>{meter === null ? 'no data' : resetLabel(meter.resetsAt)}</span>
     </div>
   )
 }
@@ -238,15 +238,23 @@ function KeyUsageCard({ card }: { card: KeyUsageData['keys'][number] }) {
     ? '#34d399'
     : card.state === 'suspended' ? '#fbbf24' : '#f87171'
   return (
-    <div style={{ ...CARD, flex: '1 0 260px', minWidth: 260, display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, fontFamily: 'ui-monospace, monospace' }}>{card.masked}</span>
+    <div style={{
+      ...CARD,
+      minWidth: 0,
+      padding: '18px 20px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 16,
+      background: 'color-mix(in oklab, currentColor 3%, transparent)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingBottom: 12, borderBottom: '1px solid HAIRLINE' }}>
+        <span style={{ fontSize: 13, fontWeight: 600, fontFamily: 'ui-monospace, monospace' }}>{card.masked}</span>
         <span style={{
           border: `1px solid ${tone}`,
           color: tone,
           borderRadius: 999,
-          padding: '2px 8px',
-          fontSize: 10,
+          padding: '3px 9px',
+          fontSize: 11,
           textTransform: 'capitalize',
         }}>
           {card.state}
@@ -259,7 +267,7 @@ function KeyUsageCard({ card }: { card: KeyUsageData['keys'][number] }) {
           </div>
         )
         : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <UsageMeterRow label="5 hours" meter={card.usage.rolling} />
             <UsageMeterRow label="This week" meter={card.usage.weekly} />
             <UsageMeterRow label="This month" meter={card.usage.monthly} />
@@ -267,21 +275,21 @@ function KeyUsageCard({ card }: { card: KeyUsageData['keys'][number] }) {
         )}
       {card.suspendedUntil === null
         ? null
-        : <span style={{ ...MUTED, fontSize: 10 }}>Suspended until {resetLabel(card.suspendedUntil).replace(/^resets /u, '')}</span>}
+        : <span style={{ ...MUTED, fontSize: 11 }}>Suspended until {resetLabel(card.suspendedUntil).replace(/^resets /u, '')}</span>}
     </div>
   )
 }
 
 function KeyUsageSection({ result }: { result: KeyUsageResult | null }) {
   return (
-    <div style={CARD}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Usage</span>
-          <span style={{ ...MUTED, fontSize: 11 }}>OpenCode Go rotation keys</span>
+    <div style={{ ...CARD, padding: '18px 20px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>Usage</span>
+          <span style={{ ...MUTED, fontSize: 12 }}>OpenCode Go rotation keys</span>
         </div>
         {result?.ok === true
-          ? <span style={{ ...MUTED, fontSize: 10 }}>{result.data.keys.length} key{result.data.keys.length === 1 ? '' : 's'}</span>
+          ? <span style={{ ...MUTED, fontSize: 11 }}>{result.data.keys.length} key{result.data.keys.length === 1 ? '' : 's'}</span>
           : null}
       </div>
       {result === null
@@ -291,7 +299,11 @@ function KeyUsageSection({ result }: { result: KeyUsageResult | null }) {
           : result.data.keys.length === 0
             ? <span style={{ ...MUTED, fontSize: 12 }}>No OpenCode keys configured.</span>
             : (
-              <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 4 }}>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+                gap: 16,
+              }}>
                 {result.data.keys.map(card => <KeyUsageCard key={card.id} card={card} />)}
               </div>
             )}

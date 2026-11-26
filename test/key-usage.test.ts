@@ -61,6 +61,30 @@ describe('OpenCode key usage', () => {
     })
     expect(usage.keys).toEqual([])
   })
+
+  test('keeps every card when the pool has four keys', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'dsh-key-usage-four-'))
+    const authPath = join(home, 'auth.json')
+    const keys = ['1111', '2222', '3333', '4444'].map(suffix => `oc_sk_${'x'.repeat(28)}${suffix}`)
+    try {
+      writeFileSync(authPath, JSON.stringify({
+        'opencode-go': { type: 'api', key: keys[0], keys },
+      }))
+      const fetchImpl = (async () => new Response(JSON.stringify({
+        usage: {
+          rolling: { status: 'ok', percent: 1, resetsAt: null },
+          weekly: { status: 'ok', percent: 2, resetsAt: null },
+          monthly: { status: 'ok', percent: 3, resetsAt: null },
+        },
+      }), { status: 200 })) as unknown as typeof fetch
+      const usage = await readKeyUsage({ authPath, fetchImpl, now: NOW })
+      expect(usage.keys).toHaveLength(4)
+      expect(new Set(usage.keys.map(card => card.id)).size).toBe(4)
+      expect(new Set(usage.keys.map(card => card.masked)).size).toBe(4)
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
 })
 
 function hash(key: string): string {
