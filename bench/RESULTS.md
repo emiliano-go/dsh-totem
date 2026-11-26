@@ -242,6 +242,27 @@ the simulator's semantics, 1744 differential cases against its own Python
 reference, and a step-budget sweep showing the design needs 8193 of 32000 clocks.
 So the pass was not carried by test feedback.
 
+## 19 ProgramBench: cmatrix, spike arm only
+
+The code benchmark this model actually fails: **ProgramBench**, cleanroom program
+reconstruction from a compiled binary and its docs. Published score 29.1% against
+a 70.5% frontier (Claude Opus 5.5). Public images, hidden behavioural suite, no
+internet during inference.
+
+Task `abishekvashok__cmatrix.5c082c6`: rebuild `cmatrix` (terminal Matrix effect).
+The arm was given the reference binary, the README and the man page, nothing else.
+
+| arm | approach | official eval |
+| --- | --- | --- |
+| B, spike only | spike ranked three routes to behavioural parity (single-file C+ncurses 325 LOC, raw ANSI 345, layered C 363); implemented the single-file one | **solved**, 768/769 tests |
+
+The one failure is `-V`'s embedded compile timestamp, which no rebuild can match;
+the official summary marks the task solved (`✅ 506 tests`) and does not count it.
+
+First eval attempt scored 0 with `compile_failed` because the brief said "make"
+while ProgramBench runs `compile.sh` and stashes `./executable`. That was a harness
+error, not an agent failure; with the real contract the arm passed.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
