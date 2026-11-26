@@ -103,7 +103,8 @@ image path and does not require a memory marker.
 
 ### Compaction
 
-`compaction_search` searches the current session's archived compacts. See
+`compaction_search` searches the current, another, or every archived compact.
+See
 [compaction.md](compaction.md).
 
 ### Design

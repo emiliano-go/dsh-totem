@@ -10,6 +10,7 @@
  * @module dsh-totem/compaction/blocks
  */
 import { createHash } from 'node:crypto'
+import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { JsonStore, stateDir } from '../store.ts'
 
@@ -195,8 +196,36 @@ export class ContextBlockStore {
 
   /** Search one session's compact history. */
   async search(sessionId: string, query: string, limit = 5): Promise<ContextBlock[]> {
-    const needle = query.trim().toLowerCase()
     const blocks = await this.read(sessionId)
+    return this.match(blocks, query, limit)
+  }
+
+  /** Search every session's archive, for cross-session recovery. */
+  async searchAll(query: string, limit = 5): Promise<ContextBlock[]> {
+    const names = await readdir(this.dir).catch(() => [])
+    const found: ContextBlock[] = []
+    const seen = new Set<string>()
+    for (const name of names.slice(0, 1000)) {
+      if (!name.endsWith('.json')) continue
+      try {
+        const raw = JSON.parse(await readFile(join(this.dir, name), 'utf8')) as unknown
+        if (!Array.isArray(raw)) continue
+        for (const item of raw) {
+          const block = cleanBlock(item)
+          if (block !== undefined && !seen.has(block.id)) {
+            seen.add(block.id)
+            found.push(block)
+          }
+        }
+      } catch {
+        // A corrupt or concurrently-written archive file is skipped.
+      }
+    }
+    return this.match(found, query, limit)
+  }
+
+  private match(blocks: ContextBlock[], query: string, limit: number): ContextBlock[] {
+    const needle = query.trim().toLowerCase()
     const matches = needle.length === 0
       ? blocks
       : blocks.filter(block =>

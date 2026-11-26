@@ -64,4 +64,47 @@ describe('compaction_search', () => {
     expect(result.error).toBe('no active session')
     expect(result.blocks).toEqual([])
   })
+
+  test('searches another session or the whole archive on request', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'totem-compaction-tool-'))
+    dirs.push(dir)
+    const blocks = new ContextBlockStore(dir)
+    for (const [sessionId, summary] of [
+      ['session-a', 'The current session chose SQLite.'],
+      ['session-b', 'The other session chose Postgres.'],
+    ] as const) {
+      await blocks.append({
+        sessionId,
+        compactionId: `compact-${sessionId}`,
+        summarySeq: 1,
+        startSeq: 1,
+        endSeq: 1,
+        shadowedSeqs: [1],
+        shadowedTokenCount: 10,
+        summary,
+        provider: 'p',
+        model: 'm',
+      })
+    }
+    let definition: any
+    registerCompactionTools({
+      tools: { register: (value: unknown) => { definition = value } },
+    } as never, blocks)
+
+    const other = await definition.execute(
+      { query: 'postgres', session: 'session-b' },
+      { agent: { session: { id: 'session-a' } } },
+    )
+    expect(other.blocks).toHaveLength(1)
+    expect(other.blocks[0].sessionId).toBe('session-b')
+
+    const all = await definition.execute(
+      { query: 'chose', session: 'all' },
+      { agent: { session: { id: 'session-a' } } },
+    )
+    expect(all.sessionId).toBe('all')
+    expect(all.blocks).toHaveLength(2)
+    expect(new Set(all.blocks.map((block: { sessionId: string }) => block.sessionId)))
+      .toEqual(new Set(['session-a', 'session-b']))
+  })
 })

@@ -62,25 +62,28 @@ compact gets `tier = max(parent.tier) + 1`.
 
 ## `compaction_search`
 
-The compaction plugin registers one read-only tool, scoped to the calling
-session:
+The compaction plugin registers one read-only tool. It defaults to the calling
+session and can search another session or the whole local archive:
 
 ```json
 {
   "query": "text to match",
-  "limit": 5
+  "limit": 5,
+  "session": "all"
 }
 ```
 
-It searches the session's summaries, compaction ids, and block ids, newest
-first, with a maximum of 50. It never restores the old transcript and cannot
-read another session's archive by guessing an id.
+It searches summaries, compaction ids, and block ids, newest first, with a
+maximum of 50. It never restores the old transcript. `session` accepts a
+session id or `"all"`; every returned block carries its owning `sessionId`.
+Cross-session reads are local and read-only.
 
 Use it when the live context no longer contains an earlier decision, path,
 command, or error:
 
 ```text
 compaction_search({"query": "the SQLite decision"})
+compaction_search({"query": "the Postgres decision", "session": "all"})
 ```
 
 ## Configuration

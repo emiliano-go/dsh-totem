@@ -9,7 +9,7 @@ Before \`grep\`, \`glob\`, \`read\`, or a shell search, call \`memory_search\` o
 \`engineering_context\`. If the answer is already stored, use it instead of
 reading the same files again. After a non-obvious discovery, record it with
 \`memory_create\`; do not leave it only in the transcript. When context feels
-lost, first call \`compaction_search\` for this session, then \`memory_search\`
+lost, first call \`compaction_search\` for this or another session, then \`memory_search\`
 for earlier work. Reuse is the token-efficient path.
 
 ## Tools
