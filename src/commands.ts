@@ -149,7 +149,7 @@ export function registerTotemCommands(
       dir: options.triage?.dir ?? '',
       feedUrl: options.triage?.feedUrl ?? '',
       windowDays: options.triage?.windowDays ?? 7,
-      batch: options.triage?.batch ?? 0,
+      batch: options.triage?.batch ?? 5,
     }
 
     register({

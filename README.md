@@ -354,7 +354,7 @@ exceptions, because the evidence work needs a real agent turn.
 
 `/triage` does the deterministic part and leaves the judgement to the agent.
 It reads `<triageDir>/ledger.jsonl`, fetches `trustsight.alerts` from the
-watcher feed, drops every slug already in the ledger, writes a timestamped
+watcher feed, drops every slug whose ledger entry is complete, writes a timestamped
 queue, and steers one normal model-visible turn with all untriaged alerts in
 scope. The turn covers over-threshold packages and TrustSight campaigns too,
 using `feed_campaigns`/`feed_campaign` to add campaign members and
@@ -373,12 +373,14 @@ itself never decides a verdict.
   README.md                        layout and ledger schema
 ```
 
-The ledger is append-only and authoritative: a slug that appears there is
-skipped by later runs, so an interrupted run resumes instead of redoing work.
+The ledger is append-only: a **complete** entry is skipped by later runs, so an
+interrupted run resumes instead of redoing work. A `status: "screened"` entry
+is requeued; it is a work marker, not a verdict.
 The default window starts at the newest alert time already in the ledger, with
 a one-day overlap, or the last 7 days when the ledger is empty. `all` removes
-the lower bound; the feed is still paged. The default batch is every untriaged
-alert in the window; `--limit N` caps a run and the result text reports how
+the lower bound; the feed is still paged. The default batch is **5** alerts, so
+one turn cannot mechanically classify a whole backlog; `--limit N` changes the
+cap and `--limit 0` queues every untriaged alert. The result text reports how
 many remain. A window can be hours (`12h`), days (`7d`, or a bare `30` for
 30 days), a `YYYY-MM-DD` date, or `all`.
 
@@ -389,6 +391,11 @@ default for a noisy rule. A code path that remains unexplained is `uncertain`,
 never `MFP`. The queue is pre-sorted: execution/egress/tamper rules and
 IOC/impersonation signals first, then oldest; `priority: "review-first"` marks
 the early slots.
+
+Every package needs at least one evidence item in the ledger. A TP must quote
+the package source or diff; an alert that cannot be evidenced is written as
+`status: "screened"` and remains eligible for the next run. A screening pass
+cannot mark a batch complete.
 
 Before the turn starts, `/triage` fast-forwards the TrustSight core checkout
 (the `TRUSTSIGHT_CHECKOUT` path, `<cwd>/trustsight`, or the usual repository
@@ -419,7 +426,7 @@ only when that path is writable from the session.
 | `triageDir` | `''` | Empty uses `<session cwd>/alert-triage`; `~/` is expanded. |
 | `triageFeedUrl` | `''` | Empty uses `WATCHER_FEED_URL`, then `https://watcher.trustsight.org`. |
 | `triageWindowDays` | `7` | Default lookback when the ledger has no entries. |
-| `triageBatch` | `0` | Maximum alerts queued per run; `0` queues every untriaged alert. |
+| `triageBatch` | `5` | Maximum alerts queued per run; `0` queues every untriaged alert. |
 
 Alert titles, headlines, and package names are treated as untrusted feed text:
 they are sanitized into the queue file and the prompt forbids following

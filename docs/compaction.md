@@ -87,8 +87,8 @@ compaction_search({"query": "the SQLite decision"})
 
 | Field | Default | Meaning |
 |---|---|---|
-| `compactionTokens` | `2048` | Output cap for one compact. |
-| `compactionMaxInputBytes` | `64000` | Transcript byte cap before truncation. |
+| `compactionTokens` | `4096` | Output cap for one compact. |
+| `compactionMaxInputBytes` | `512000` | Transcript byte cap before truncation. |
 | `provider`, `model` | deployment default | Memory-agent route; `distill: false` removes the route and forces the stock summarizer. |
 | `timeoutMs` | `15000` | Auxiliary-call timeout. |
 
@@ -96,6 +96,11 @@ The compact system prompt preserves the goal, constraints, decisions and
 reasons, exact paths/symbols/commands/errors, completed and verified work, open
 work, and failed attempts worth not repeating. The transcript is rendered from
 text, tool calls, and tool results; reasoning blocks are omitted.
+
+The input cap must stay large enough for the selected span. A 64 KB cap on a
+multi-hundred-thousand-token span summarizes only the oldest few percent, so
+the agent wakes up with a compact that silently lost most of its work. The
+default is now 512 KB, and the summary output cap is 4096 tokens.
 
 ## Coordination with recovery
 

@@ -41,8 +41,8 @@ The resolved child environment is `TOTEM_EMBEDDING_BACKEND`,
 | `recoveryTokens` | `900` | no | Token budget for the post-compaction recovery block. |
 | `maxTokens` | `512` | no | Output cap for one memory distillation call. |
 | `maxInputBytes` | `24000` | no | Input byte cap for one distillation call. |
-| `compactionTokens` | `2048` | no | Output cap for a native compaction summary. |
-| `compactionMaxInputBytes` | `64000` | no | Input byte cap for a native compaction summary. |
+| `compactionTokens` | `4096` | no | Output cap for a native compaction summary. |
+| `compactionMaxInputBytes` | `512000` | no | Input byte cap for a native compaction summary. |
 | `timeoutMs` | `15000` | no | Per-call Totem and auxiliary-model timeout. |
 | `debug` | `false` | no | Log memory registration failures. |
 | `userContext` | `true` | no | Inject the owner's global preferences at the first step. |
@@ -102,7 +102,7 @@ Reminder kinds and schedules are documented in the main
 | `triageDir` | `''` | no | Artifact directory; empty uses `<session cwd>/alert-triage`. `~/` is expanded. |
 | `triageFeedUrl` | `''` | no | Watcher feed base; empty uses `WATCHER_FEED_URL`, then the public feed. |
 | `triageWindowDays` | `7` | no | Lookback when the ledger has no entries. |
-| `triageBatch` | `0` | no | Maximum alerts queued per `/triage`; `0` queues every untriaged alert. |
+| `triageBatch` | `5` | no | Maximum alerts queued per `/triage`; `0` queues every untriaged alert. |
 
 The command never decides a verdict. It writes a queue and steers one
 model-visible turn to use the TrustSight MCP evidence tools. The ledger is

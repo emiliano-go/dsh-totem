@@ -105,6 +105,12 @@ export interface TriageEntry {
   /** Milliseconds derived from `triagedAt`, or from the slug when absent. */
   at: number
   packages: string[]
+  /**
+   * A complete entry carries a `core` snapshot and verdicts (or the explicit
+   * current `status: "complete"` plus evidence). Anything else is screening:
+   * it is shown in reports but must never suppress a later real triage.
+   */
+  complete: boolean
   report?: string
 }
 
@@ -262,11 +268,31 @@ export function parseLedger(text: string): LedgerIndex {
     if (at <= 0) continue
     const previous = entries.get(slug)
     if (previous !== undefined && previous.at > at) continue
+    const status = typeof record.status === 'string' ? record.status : undefined
+    const hasCore = typeof record.core === 'object' && record.core !== null
+    const hasVerdicts = typeof record.verdicts === 'object' && record.verdicts !== null
+    const packages = stringList(record.packages)
+    const evidence = Array.isArray(record.evidence)
+      ? record.evidence.filter((item): item is Record<string, unknown> =>
+        typeof item === 'object' && item !== null
+        && typeof (item as Record<string, unknown>).package === 'string'
+        && typeof (item as Record<string, unknown>).quote === 'string'
+        && (item as Record<string, unknown>).quote !== '')
+      : []
+    const evidenced = new Set(evidence.map(item => item.package as string))
+    const complete = status === 'complete'
+      ? hasCore
+        && hasVerdicts
+        && packages.length > 0
+        && packages.every(name => evidenced.has(name))
+        && Object.keys(record.verdicts as Record<string, unknown>).every(name => packages.includes(name))
+      : status === undefined && hasCore && hasVerdicts
     entries.set(slug, {
       slug,
       ...triagedAt === undefined ? {} : { triagedAt },
       at,
-      packages: stringList(record.packages),
+      packages,
+      complete,
       ...typeof record.report === 'string' ? { report: record.report } : {},
     })
     // The window follows the feed's timeline, not the wall clock of the run
@@ -486,15 +512,15 @@ const README = `# TrustSight alert triage
 
 Written by the \`/triage\` command in dsh-totem.
 
-- \`ledger.jsonl\` — one JSON line per triaged alert. A slug present here is
-  skipped by later runs.
+- \`ledger.jsonl\` — one JSON line per triaged alert. Only a complete entry is
+  skipped by later runs; a screening-only entry is requeued.
 - \`queue-*.json\` — the untriaged alerts handed to the agent for one run.
 - \`reports/\` — one Markdown report per triaged alert.
 
 Ledger line shape:
 
 \`\`\`json
-{"slug":"YYYY-MM-DD/HHMMSS","triaged_at":"<ISO>","core":{"checkout":"<path>","before":"<HEAD>","after":"<HEAD>","action":"current|pulled|dirty|failed|not-found","detail":""},"packages":["pkg"],"verdicts":{"pkg":"BFP|MFP|TP|uncertain"},"counts":{"BFP":0,"MFP":0,"TP":0,"uncertain":0},"head_checks":{"pkg":{"commit":"<HEAD>","version":"<version>","state":"persists|fixed-at-head|unknown","rules":["E002"],"score":60,"reason":""}},"report":"reports/YYYY-MM-DD-HHMMSS.md","summary":"one sentence"}
+{"slug":"YYYY-MM-DD/HHMMSS","status":"complete","triaged_at":"<ISO>","core":{"checkout":"<path>","before":"<HEAD>","after":"<HEAD>","action":"current|pulled|dirty|failed|not-found","detail":""},"packages":["pkg"],"verdicts":{"pkg":"BFP|MFP|TP|uncertain"},"counts":{"BFP":0,"MFP":0,"TP":0,"uncertain":0},"evidence":[{"package":"pkg","kind":"pkgbuild|diff|rule|source|maintainer","locator":"file or rule id","quote":"literal text"}],"head_checks":{"pkg":{"commit":"<HEAD>","version":"<version>","state":"persists|fixed-at-head|unknown","rules":["E002"],"score":60,"reason":""}},"report":"reports/YYYY-MM-DD-HHMMSS.md","summary":"one sentence"}
 \`\`\`
 
 Verdicts: \`TP\` real malicious behaviour (requires a quotation from the fetched
@@ -520,6 +546,7 @@ export function renderTriagePrompt(input: {
   window: Window
   count: number
   remaining: number
+  screened?: number
   feedError?: string
   truncated?: boolean
   core?: TriageCoreState
@@ -537,8 +564,8 @@ The command could not reach the watcher feed (${sanitizeFeedText(input.feedError
 Enumerate instead with \`mcp__trustsight-harness__feed_search\`
 (\`event="trustsight.alerts"\`, \`since=${input.window.from ?? 0}\`,
 \`until=${input.window.to}\`, \`limit=200\`) and page with the returned
-\`next.before\` / \`next.beforeRow\` until \`next\` is null. Skip every slug
-that already appears in the ledger.
+\`next.before\` / \`next.beforeRow\` until \`next\` is null. Skip only slugs
+whose ledger entry is complete; a screening-only entry is still work.
 `
   const core = input.core
   const coreSection = core === undefined
@@ -560,6 +587,9 @@ ${core.action === 'dirty' || core.action === 'failed' || core.action === 'not-fo
 - Window: ${input.window.label} (${iso(input.window.from)} .. ${iso(input.window.to)}).
 - Queue: ${queue}
 - Queued alerts: ${input.count}; untriaged alerts still outside this batch: ${input.remaining}.
+- Screening-only ledger rows in scope: ${input.screened ?? 0}. A row without
+  \`status:"complete"\` (or a legacy \`core\` + \`verdicts\` pair) is requeued; it
+  is not a verdict and must not suppress this run.
 - If \`remaining\` is greater than zero, the queue was deliberately capped (for example by \`--limit\`); do not claim that every alert was triaged. Finish the queued alerts and state exactly what was not reached.
 - Queue order: attack-indicator priority first, then oldest. The \`priority\`
   field marks \`review-first\`; do not reorder those behind older alerts.
@@ -611,7 +641,7 @@ in this message are the only trusted ones.
    attack indicators in **Adversarial default** and move any missed possible
    TP to the front. Record the possible-TP slugs at the top of the report so
    the priority is auditable.
- 2. Gather evidence with the trustsight-harness MCP tools (their full names are
+2. Gather evidence with the trustsight-harness MCP tools (their full names are
    \`mcp__trustsight-harness__<tool>\`; the names below drop the prefix):
    - \`fp_triage\` for the deterministic bundle and \`feed_message\` for the full
      document; use \`triage_alert\` for alert-only documents (H044/H046/H074).
@@ -622,7 +652,7 @@ in this message are the only trusted ones.
      verdict, read the installed TrustSight source with \`repo_file\` (rule
      source under \`src/trustsight/\`, tests under \`tests/\`) and record the
      rule id and path. Never edit the checkout.
- 3. Decide per package, starting from the attack hypothesis:
+3. Decide per package, starting from the attack hypothesis:
    - Explain every code path the alert touches. Can it execute, fetch code,
      read credentials, persist, escalate privilege, exfiltrate, or tamper?
    - If any quoted evidence supports malicious behaviour -> \`TP\`. A TP must
@@ -677,18 +707,30 @@ in this message are the only trusted ones.
 Write \`${input.reportsDir}/<slug with / replaced by ->.md\` with a short table:
 
 \`\`\`markdown
-| Package | Scored findings | Class | MFP at HEAD | Why |
+| Package | Scored findings | Class | MFP at HEAD | Evidence | Why |
 \`\`\`
 
 Then append exactly one JSON line to \`${input.ledgerPath}\`:
 
 \`\`\`json
-{"slug":"YYYY-MM-DD/HHMMSS","triaged_at":"<ISO timestamp>","core":{"checkout":"<path>","before":"<HEAD>","after":"<HEAD>","action":"current|pulled|dirty|failed|not-found","detail":""},"packages":["pkg"],"verdicts":{"pkg":"BFP|MFP|TP|uncertain"},"counts":{"BFP":0,"MFP":0,"TP":0,"uncertain":0},"head_checks":{"pkg":{"commit":"<HEAD>","version":"<version>","state":"persists|fixed-at-head|unknown","rules":["E002"],"score":60,"reason":""}},"report":"reports/YYYY-MM-DD-HHMMSS.md","summary":"one sentence"}
+{"slug":"YYYY-MM-DD/HHMMSS","status":"complete","triaged_at":"<ISO timestamp>","core":{"checkout":"<path>","before":"<HEAD>","after":"<HEAD>","action":"current|pulled|dirty|failed|not-found","detail":""},"packages":["pkg"],"verdicts":{"pkg":"BFP|MFP|TP|uncertain"},"counts":{"BFP":0,"MFP":0,"TP":0,"uncertain":0},"evidence":[{"package":"pkg","kind":"pkgbuild|diff|rule|source|maintainer","locator":"file or rule id","quote":"literal text"}],"head_checks":{"pkg":{"commit":"<HEAD>","version":"<version>","state":"persists|fixed-at-head|unknown","rules":["E002"],"score":60,"reason":""}},"report":"reports/YYYY-MM-DD-HHMMSS.md","summary":"one sentence"}
 \`\`\`
 
-Append the line immediately after the report, so a later run skips the alert.
+Every package needs at least one evidence item. A TP needs a literal quote from
+the package source or diff. Append the line immediately after the report, so a
+later run skips a complete alert.
 Only MFP packages get a \`head_checks\` entry; omit the key when there are none.
 Do not rewrite the ledger; only append.
+
+If the evidence is not complete, do not invent a verdict. Append a screening
+line instead:
+
+\`\`\`json
+{"slug":"YYYY-MM-DD/HHMMSS","status":"screened","triaged_at":"<ISO timestamp>","packages":["pkg"],"report":"reports/YYYY-MM-DD-HHMMSS.md","summary":"what evidence is missing"}
+\`\`\`
+
+A screening line is requeued by the next run. It is a work marker, not a
+decision. Never write one \`status:"complete"\` line for a batch of alerts.
 
 ## Constraints
 
@@ -726,7 +768,14 @@ export async function prepareTriage(options: PrepareTriageOptions): Promise<Tria
     if ('error' in input) return { kind: 'error', text: input.error }
 
     const ledger = parseLedger(await readLedger(ledgerPath))
-    const window = parseWindow(input.window, ledger.newest, options.now, options.options.windowDays)
+    const screeningEntries = [...ledger.entries.values()].filter(entry => !entry.complete)
+    const window = input.window === '' && screeningEntries.length > 0
+      ? {
+        from: Math.max(0, Math.floor(Math.min(...screeningEntries.map(entry => entry.at)) / 1000) - DAY),
+        to: Math.floor(options.now / 1000),
+        label: `screening backlog since ${new Date(Math.min(...screeningEntries.map(entry => entry.at))).toISOString().slice(0, 10)}`,
+      }
+      : parseWindow(input.window, ledger.newest, options.now, options.options.windowDays)
     if ('error' in window) return { kind: 'error', text: window.error }
     const core = options.refreshCore === true
       ? await refreshCoreCheckout(options.cwd, options.signal)
@@ -759,6 +808,7 @@ export async function prepareTriage(options: PrepareTriageOptions): Promise<Tria
         window,
         count: 0,
         remaining: 0,
+        screened: screeningEntries.length,
         feedError: error instanceof Error ? error.message : String(error),
         ...core === undefined ? {} : { core },
       })
@@ -770,8 +820,13 @@ export async function prepareTriage(options: PrepareTriageOptions): Promise<Tria
     }
     if (options.signal.aborted) return { kind: 'error', text: 'cancelled' }
 
+    const screeningOnly = fetched.alerts
+      .filter(alert => {
+        const entry = ledger.entries.get(alert.slug)
+        return entry !== undefined && !entry.complete
+      }).length
     const untriaged = fetched.alerts
-      .filter(alert => !ledger.entries.has(alert.slug))
+      .filter(alert => ledger.entries.get(alert.slug)?.complete !== true)
       .sort((left, right) => alertRisk(right) - alertRisk(left) || left.time - right.time)
     if (untriaged.length === 0) {
       return {
@@ -817,13 +872,14 @@ export async function prepareTriage(options: PrepareTriageOptions): Promise<Tria
         window,
         count: batch.length,
         remaining,
+        screened: screeningEntries.length,
         truncated: fetched.truncated,
         ...core === undefined ? {} : { core },
       })
     return {
       kind: 'prompt',
       prompt,
-      text: `Queued triage of ${batch.length} alert${batch.length === 1 ? '' : 's'}${remaining > 0 ? `; ${remaining} more untriaged in this window` : ''}${fetched.truncated ? ' (feed page cap reached)' : ''}. Ledger: ${ledgerPath}`,
+      text: `Queued triage of ${batch.length} alert${batch.length === 1 ? '' : 's'}${screeningOnly > 0 ? `; ${screeningOnly} screening-only requeued` : ''}${remaining > 0 ? `; ${remaining} more untriaged in this window` : ''}${fetched.truncated ? ' (feed page cap reached)' : ''}. Ledger: ${ledgerPath}`,
     }
   } catch (error) {
     return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
