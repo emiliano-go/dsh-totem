@@ -193,6 +193,15 @@ decompressor turns back into a 4868-byte text file.
 | --- | --- | --- | --- |
 | A reasoning only | modelled the decoder exactly, built a constructive range encoder, optimal-parse LZ DP with iterative cost re-estimation | **2276** | pass |
 
+## 15 Terminal-Bench: model-extraction-relu-logits
+
+Recover the weight matrix `A1` of `A2*ReLU(A1x+b1)+b2` from **query access only**,
+up to permutation and scaling.
+
+| arm | approach | result | grade |
+| --- | --- | --- | --- |
+| A reasoning only | scan random lines for kinks; each kink's location follows in closed form from the two pure slopes, and the gradient difference across it is `+-A2[i]*A1[i,:]`; cluster those directions | 30x10 recovered, ratio error 2e-7 against a 1e-4 bar | pass |
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
