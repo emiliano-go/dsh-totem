@@ -174,9 +174,28 @@ Both found the same five bug classes without reading the tests: trailing prose,
 units merely containing "byte", Unicode digits, leading whitespace, and silent
 truncation at the first separator.
 
+## 12 Terminal-Bench: fix-ocaml-gc
+
+A deliberately broken OCaml 5.5 garbage collector: run-length compressed free runs
+in the major heap, the compiler segfaults while bootstrapping itself, and the
+`.git` directory is deleted so it cannot be reverted. Expert estimate 24 hours.
+
+| arm | finding | evidence | grade |
+| --- | --- | --- | --- |
+| A reasoning only | `pool_sweep` advanced by `Whsize_hd(hd)` instead of the pool's fixed `wh`, so a freed block moved the scan one word and every later header was parsed from the middle of an object | one-line fix `p += wh`; `make` exits 0; `tests/basic` 40 passed | pass |
+
+## 13 Terminal-Bench: write-compressor
+
+Produce a `data.comp` of at most 2500 bytes that a supplied range-decoder-based
+decompressor turns back into a 4868-byte text file.
+
+| arm | approach | bytes | grade |
+| --- | --- | --- | --- |
+| A reasoning only | modelled the decoder exactly, built a constructive range encoder, optimal-parse LZ DP with iterative cost re-estimation | **2276** | pass |
+
 ## What this establishes
 
-Eleven problems, eleven ties, twenty-two arm runs, all graded by the same hidden suites:
+Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
 the reasoning arm matched the MVP arm every time, including on the problems built
 to separate them, and including the repository task with no design freedom. The premise that reasoning would pick the comfortable design
 was wrong twice over (fsync-per-write, then full scan).
