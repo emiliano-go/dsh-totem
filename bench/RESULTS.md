@@ -227,6 +227,21 @@ and even the expected rows from that diff. Real Terminal-Bench does not mount th
 tests during the agent phase. From the next task on, the arm gets no verifier and
 grading happens after it stops.
 
+## 18 Strict re-run: circuit-fibsqrt without a verifier
+
+The first task run under the corrected protocol: tests not mounted, no check
+script, the arm told grading happens after it stops.
+
+| arm | design | lines | grade |
+| --- | --- | --- | --- |
+| A reasoning only | sequential machine, 8 chained odd-number-subtraction sqrt steps per clock, each coupled 1:1 to a Fibonacci step so the Fibonacci count equals floor(sqrt(N)); self-copy lines lock the preloaded inputs | 7684 | 3 passed |
+
+It found a different circuit than in the earlier run (7684 lines against 3640) and
+validated it without any oracle: input-passthrough and counter circuits to prove
+the simulator's semantics, 1744 differential cases against its own Python
+reference, and a step-budget sweep showing the design needs 8193 of 32000 clocks.
+So the pass was not carried by test feedback.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
