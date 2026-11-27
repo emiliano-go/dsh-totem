@@ -408,6 +408,26 @@ The grader itself flaked once per pair: the first evaluation of each submission
 returned `RuntimeError`, and an immediate rerun scored 98. That is a grading
 artifact, not a submission problem.
 
+## 27 Isolated race: the numbers that count
+
+Prior work was moved into a Docker volume and deleted from the host, so no `sd`
+implementation existed for either arm to copy. Both briefs required an
+empty-cargo-cache build proof, and both arms passed it.
+
+| arm | official score | notes |
+| --- | --- | --- |
+| single, one design | **95** | hand-written parser, `regex` crate only |
+| tournament, three designs, two rounds | **92** | clap-based design, vendored |
+
+The single arm wins by three points. The tournament had no gradient to climb: all
+three designs scored 20/20 on the 20-check oracle, so selection was a coin flip
+between a clap port and two hand-written ones, and the clap port then lost points
+on details the oracle never exercised.
+
+The tool also disqualified every candidate: the harness criteria (`passes`,
+`build_seconds`) were absent while the oracle had scored all three 20/20. Ranking
+now uses only criteria that were actually measured.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
