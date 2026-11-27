@@ -526,6 +526,28 @@ starting implementation. The mechanics are correct — slice brief, protected or
 decision record — but a slice where every design scores the same adds no signal, and
 a shared base makes the comparison decorative.
 
+## 33 Scoped mode works; the boost depends on the task, not the tool
+
+`spike` now takes `slice` plus a mandatory `contract`, builds only that bounded
+decision in each candidate, ranks by the protected oracle, and records
+`DECISION.md` for a composition pass.
+
+Live proof after reload: a scoped call with a contract ranked three designs, named
+`c2` winner, and wrote the decision record. Before the reload the same call failed
+on a missing `contract` because the tool never forwarded it.
+
+Measured on the deadline queue, where the oracle genuinely discriminates
+(heap 0.08 s, sorted list 0.75 s, lazy sort 66.8 s against a 2.0 s budget):
+
+| arm | private load test |
+| --- | --- |
+| control, 20 min single pass | 3/3 |
+| scoped, 2 min tournament + compose | 3/3 |
+
+A tie: the single pass chooses the heap on its own, so selection adds nothing.
+Scoped mode is correct and cheap; whether it converts depends on the task having a
+decision a single pass gets wrong, which none of the tasks measured here has.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
