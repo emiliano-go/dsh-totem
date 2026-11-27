@@ -760,8 +760,17 @@ export function apply(ctx: Context, config: Config): void {
   // transcript rather than silently accepted.
   ctx.on('agent/turn-stopping', ({ agent }) => {
     try {
-      if (!totem.config.verifyGate.get()) return
-      const budget = totem.config.verifyGateNudges.get()
+      // A profile-persisted config can predate a newer volatile field. Use the
+      // same defaults the schema would have supplied instead of failing the
+      // gate on every turn.
+      const gate = (totem.config as {
+        verifyGate?: { get(): boolean }
+        verifyGateNudges?: { get(): number }
+        verifyCommand?: { get(): string }
+      }).verifyGate
+      if (gate?.get() === false) return
+      const budget = (totem.config as { verifyGateNudges?: { get(): number } }).verifyGateNudges?.get() ?? 2
+      if (budget <= 0) return
       if (budget <= 0) return
       const typed = agent as { session?: object; steer?: (message: unknown) => void }
       const session = typed.session
@@ -771,7 +780,7 @@ export function apply(ctx: Context, config: Config): void {
       const verdict = evaluateTurn({
         changes: buffer.changes,
         checks: buffer.checks,
-        command: totem.config.verifyCommand.get().trim(),
+        command: (totem.config as { verifyCommand?: { get(): string } }).verifyCommand?.get().trim() ?? '',
       })
       if (!verdict.block || verdict.message === undefined) return
       buffer.nudges += 1
