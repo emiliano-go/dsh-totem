@@ -25,9 +25,12 @@ for earlier work. Reuse is the token-efficient path.
 ## Harness history
 
 Harness edits have a separate history from task memory. Before changing a
-harness mechanism, call \`harness_history\`; after a measured attempt, call
-\`harness_record\` with the root cause, prediction, observed result, benchmark,
-model, and commit. Never put harness-edit records in task memory.
+harness mechanism, call \`harness_plan\` with the recurring root cause and the
+target benchmark/model. Treat its \`nextExperiment\` as the default; if you
+deviate, say why in one line. After a measured attempt, call \`harness_record\`
+with the root cause, prediction, observed result, benchmark, model, and commit.
+Use \`harness_history\` only when you need the raw records. Never put
+harness-edit records in task memory.
 
 ## Tool-associated memories
 

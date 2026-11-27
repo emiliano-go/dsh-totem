@@ -13,6 +13,32 @@ const STATUS: HarnessStatus[] = ['proposed', 'accepted', 'rejected', 'superseded
 
 export function registerHarnessTools(ctx: Context, harness: HarnessMemory, metrics?: MetricsLog): void {
   ctx.tools.register(defineTool({
+    name: 'harness_plan',
+    description: 'Decide the next harness experiment from prior attempts. Call before changing a harness mechanism; returns the strongest accepted edit, rejected edits, and one concrete next experiment.',
+    parameters: {
+      rootCause: { type: 'string', required: true, description: 'The recurring harness problem to plan for.' },
+      benchmark: { type: 'string', description: 'Target benchmark or task context.' },
+      model: { type: 'string', description: 'Target policy/model context.' },
+      limit: { type: 'number', description: 'Maximum history records to inspect (default 50, max 50).' },
+    } as never,
+    output: { schema: { type: 'json' }, render: (_args, value) => TEXT(value) },
+    async execute(args: Record<string, unknown>) {
+      const plan = await harness.plan(String(args.rootCause ?? ''), {
+        benchmark: typeof args.benchmark === 'string' ? args.benchmark : '',
+        model: typeof args.model === 'string' ? args.model : '',
+        limit: typeof args.limit === 'number' ? args.limit : 50,
+      })
+      metrics?.record('harness.plan', {
+        rootCause: plan.rootCause,
+        matched: plan.total,
+        accepted: plan.accepted?.id ?? '',
+        rejected: plan.rejected.length,
+      })
+      return plan
+    },
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'harness_record',
     description: 'Record a harness-optimization attempt: recurring root cause, edit, rationale, predicted result, observed result, and evaluation context. This is separate from task memory.',
     parameters: {

@@ -39,4 +39,50 @@ describe('harness memory', () => {
     expect(memory.record({ rootCause: '', edit: 'x' })).rejects.toThrow()
     expect(memory.record({ rootCause: 'x', edit: '' })).rejects.toThrow()
   })
+
+  test('plan returns the strongest accepted edit and the next experiment', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-harness-'))
+    const memory = new HarnessMemory(join(dir, 'harness.jsonl'))
+    await memory.record({
+      rootCause: 'compaction drops late tool results',
+      edit: 'raise the summary input cap',
+      status: 'accepted',
+      benchmark: 'coding',
+      model: 'model-a',
+      metrics: { delta: 2.4 },
+    })
+    await memory.record({
+      rootCause: 'compaction drops late tool results',
+      edit: 'raise the retain ratio',
+      status: 'rejected',
+      benchmark: 'coding',
+      model: 'model-a',
+      metrics: { delta: -1 },
+    })
+    await memory.record({
+      rootCause: 'compaction drops late tool results',
+      edit: 'trim the system prompt',
+      status: 'accepted',
+      benchmark: 'coding',
+      model: 'model-a',
+      metrics: { delta: 0.5 },
+    })
+
+    const plan = await memory.plan('compaction drops late tool results', {
+      benchmark: 'coding',
+      model: 'model-a',
+    })
+    expect(plan.accepted?.edit).toBe('raise the summary input cap')
+    expect(plan.rejected).toHaveLength(1)
+    expect(plan.nextExperiment).toContain('raise the summary input cap')
+    expect(plan.nextExperiment).not.toContain('trim the system prompt')
+  })
+
+  test('plan names a baseline when there is no history', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-harness-'))
+    const memory = new HarnessMemory(join(dir, 'harness.jsonl'))
+    const plan = await memory.plan('new harness problem')
+    expect(plan.accepted).toBeNull()
+    expect(plan.nextExperiment).toContain('Record a baseline')
+  })
 })

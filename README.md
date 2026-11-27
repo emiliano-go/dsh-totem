@@ -80,8 +80,8 @@ The plugin surface tracks the 0.10.0 tool set:
   decisions, gotchas, and architecture records are untouched.
 - `memory_metrics` reads `~/.dsh/totem/metrics.jsonl` for file-memory noise,
   query latency, digest size, and recovery size.
-- `harness_history` and `harness_record` keep harness-optimization attempts in
-  a separate store, not in task memory.
+- `harness_plan`, `harness_history`, and `harness_record` keep harness-optimization
+  attempts in a separate store and turn them into a next-experiment decision.
 - `memory_file_context` stores one current-state TLDR per file, keyed by content
   hash; repeated reads return `fresh: true` without rewriting.
 - A whole-file `read` checks the cached TLDR first. When the file is unchanged,

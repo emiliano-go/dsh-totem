@@ -44,6 +44,22 @@ export interface HarnessEditInput {
   relatedMemoryIds?: string[]
 }
 
+export interface HarnessPlanOptions {
+  benchmark?: string
+  model?: string
+  limit?: number
+}
+
+export interface HarnessPlan {
+  rootCause: string
+  context: { benchmark: string; model: string }
+  total: number
+  accepted: HarnessEdit | null
+  rejected: HarnessEdit[]
+  proposed: HarnessEdit[]
+  nextExperiment: string
+}
+
 export class HarnessMemory {
   private queue: Promise<void> = Promise.resolve()
 
@@ -107,5 +123,54 @@ export class HarnessMemory {
     return matched
       .reverse()
       .slice(0, Math.max(1, Math.min(50, Math.trunc(limit))))
+  }
+
+  /**
+   * Turn the history into one bounded decision: reuse the strongest accepted
+   * edit, avoid the rejected ones, and name the next experiment.
+   */
+  async plan(rootCause: string, options: HarnessPlanOptions = {}): Promise<HarnessPlan> {
+    const query = rootCause.trim()
+    const benchmark = options.benchmark?.trim() ?? ''
+    const model = options.model?.trim() ?? ''
+    const records = await this.history(query, options.limit ?? 50)
+    const matches = (record: HarnessEdit): boolean =>
+      (benchmark.length === 0 || record.benchmark.toLowerCase().includes(benchmark.toLowerCase()))
+      && (model.length === 0 || record.model.toLowerCase().includes(model.toLowerCase()))
+    const contextual = records.filter(matches)
+    const pool = contextual.length > 0 ? contextual : records
+    const strength = (record: HarnessEdit): number =>
+      record.metrics.delta ?? record.metrics.score ?? 0
+    const accepted = pool
+      .filter(record => record.status === 'accepted')
+      .sort((a, b) => strength(b) - strength(a) || b.createdAt.localeCompare(a.createdAt))[0] ?? null
+    const rejected = pool.filter(record => record.status === 'rejected').slice(0, 3)
+    const proposed = pool.filter(record => record.status === 'proposed').slice(0, 3)
+    const target = [benchmark, model].filter(Boolean).join(' / ') || 'the target benchmark'
+
+    let nextExperiment: string
+    if (accepted !== null) {
+      const mismatch = (benchmark.length > 0 && !accepted.benchmark.toLowerCase().includes(benchmark.toLowerCase()))
+        || (model.length > 0 && !accepted.model.toLowerCase().includes(model.toLowerCase()))
+      nextExperiment = mismatch
+        ? `Validate "${accepted.edit}" on ${target} before reusing it wholesale; the accepted record came from a different context.`
+        : `Reuse "${accepted.edit}" on ${target}, measure the same metric, and record the result with harness_record.`
+    } else if (rejected.length > 0) {
+      nextExperiment = `Do not repeat "${rejected[0].edit}" (${rejected[0].observed || 'rejected'}); change the root-cause mechanism before retrying.`
+    } else if (proposed.length > 0) {
+      nextExperiment = `Evaluate the proposed "${proposed[0].edit}" on ${target} before changing anything else.`
+    } else {
+      nextExperiment = `No harness history for this root cause. Record a baseline with harness_record before changing the harness.`
+    }
+
+    return {
+      rootCause: query,
+      context: { benchmark, model },
+      total: pool.length,
+      accepted,
+      rejected,
+      proposed,
+      nextExperiment,
+    }
   }
 }
