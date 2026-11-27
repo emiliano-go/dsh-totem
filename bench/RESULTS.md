@@ -428,6 +428,26 @@ The tool also disqualified every candidate: the harness criteria (`passes`,
 `build_seconds`) were absent while the oracle had scored all three 20/20. Ranking
 now uses only criteria that were actually measured.
 
+## 28 Sharp oracle, and a tie at the ceiling
+
+Task built for this test: `jpatch`, an RFC 6902 patch engine with a 15-case visible
+oracle and a 39-case hidden suite kept in a Docker volume.
+
+| arm | visible | hidden |
+| --- | --- | --- |
+| single, one design | 15/15 | **39/39** |
+| tournament, three designs, two rounds | 15/15 | **39/39** |
+
+The visible suite was measured to be sharp: a careless design scored 13/15 while a
+careful one scored 15/15. Both arms then covered every hidden case, so the
+tournament had nothing left to win. A task that one careful 30-minute pass fully
+solves cannot demonstrate a tournament.
+
+Also operational: the ranking fix (drop criteria nobody measured) is committed but
+was not live during these runs — the host still had the previous build, so each
+tournament recorded `verify_passed` and then disqualified everyone. Workers picked
+their winners by hand. The fix needs a host reload to take effect.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
