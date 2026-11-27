@@ -239,6 +239,34 @@ describe('the caller proposes the approaches', () => {
   })
 })
 
+describe('scoped decisions', () => {
+  test('a slice makes the brief a bounded decision and records the winner', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spike-slice-'))
+    const prompts: string[] = []
+    const fake = {
+      subagents: {
+        async startActivation(spec: { request: { prompt: { text: string }[]; cwd: string } }) {
+          prompts.push(spec.request.prompt[0].text)
+          await Bun.write(join(spec.request.cwd, 'o.sh'), 'echo "4 passed, 0 failed"\n')
+          return { async result() { return { output: [], stopReason: 'done' } }, async dispose() {} }
+        },
+      },
+    }
+    const run = await runSpike(fake as never, {
+      question: 'q',
+      criteria: [{ name: 'loc', direction: 'min', weight: 1 }],
+      approaches: ['a', 'b', 'c'],
+      slice: 'tree layout only',
+      verify: 'bash o.sh',
+      workspace: dir,
+    })
+    expect(prompts.every(prompt => prompt.includes('tree layout only'))).toBe(true)
+    expect(prompts.every(prompt => prompt.includes('This is a scoped decision'))).toBe(true)
+    const decision = await Bun.file(join(dir, '.spike', run.id, 'DECISION.md')).text()
+    expect(decision).toContain('Winner:')
+  })
+})
+
 describe('ranking with an oracle', () => {
   test('a criterion nobody measured does not disqualify every candidate', async () => {
     const fake = {

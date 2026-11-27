@@ -117,6 +117,8 @@ export function buildBrief(input: {
   criteria: SpikeCriterion[]
   measure?: string
   verify?: string
+  /** When set, candidates build only this slice of the task. */
+  slice?: string
   dir: string
   timeboxMs: number
   contract?: string
@@ -136,6 +138,12 @@ export function buildBrief(input: {
     `That directory is the deliverable: leave the MVP runnable, plus a RESULT.md saying what you chose and the dependencies.`,
     `You have ${Math.round(input.timeboxMs / 60_000)} minutes. A rough MVP that exists beats a careful one that does not.`,
   ]
+  if (input.slice !== undefined && input.slice.trim().length > 0) {
+    const mvp = lines.findIndex(line => line.startsWith('Build the smallest runnable MVP'))
+    if (mvp >= 0) {
+      lines[mvp] = `This is a scoped decision: build only ${input.slice.trim()}, as small as it can be while still being judgeable. Do not build the rest of the task; a separate pass composes the winner.`
+    }
+  }
   if (input.contract !== undefined && input.contract.trim().length > 0) {
     lines.push(
       ``,
@@ -521,6 +529,8 @@ export async function runSpike(
     signal?: AbortSignal
     /** File holding the oracle script; restored into every candidate before it runs. */
     verifyFile?: string
+    /** Scope the candidates to one slice of a larger task, so a candidate costs minutes. */
+    slice?: string
     /** How many refinement rounds to run with the oracle's failures as feedback. */
     rounds?: number
     /** Directory the workspaces are created under; defaults to the process cwd. */
@@ -574,6 +584,7 @@ export async function runSpike(
           measure: options.measure,
           dir,
           timeboxMs,
+          ...options.slice === undefined ? {} : { slice: options.slice },
           ...options.contract === undefined ? {} : { contract: options.contract },
           ...options.runner === undefined ? {} : { runner: options.runner },
           harnessed,
@@ -711,6 +722,27 @@ ${feedback}
       .map(entry => entry.median === 0 ? 0 : (entry.max - entry.min) / Math.abs(entry.median))
     return sum + criterion.weight * median(ratios)
   }, 0)
+  if ((options.slice ?? '').trim().length > 0) {
+    const best = qualified[0] === undefined ? undefined : measured.find(entry => entry.id === qualified[0].id)
+    const lines = [
+      '# Scoped decision',
+      '',
+      `Slice: ${options.slice}`,
+      '',
+      best === undefined
+        ? 'No candidate qualified; the slice is undecided.'
+        : [
+          `Winner: ${best.id} (${best.approach})`,
+          `Dir: ${best.dir}`,
+          `Elapsed: ${Math.round(best.elapsedMs / 1000)}s, files ${best.files}, loc ${best.loc}`,
+          best.measurements === undefined ? '' : `Measured: ${JSON.stringify(best.measurements)}`,
+          '',
+          'Compose this design into the full task by hand or with one follow-up pass; the winner is a slice, not the deliverable.',
+        ].filter(line => line.length > 0).join('\n'),
+      '',
+    ]
+    await writeFile(join(root, 'DECISION.md'), lines.join('\n'), 'utf8')
+  }
   const first = qualified[0]
   const second = qualified[1]
   const undecided = first !== undefined && second !== undefined
@@ -833,6 +865,10 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
         type: 'string',
         description: 'Sound oracle command run inside every candidate, e.g. the repository test suite. Its pass count ranks the candidates above your own criteria, and its failures become feedback for the next round.',
       },
+      slice: {
+        type: 'string',
+        description: 'Scope every candidate to one slice of a larger task (one bounded design decision). A candidate then costs minutes, and the winner is composed afterwards instead of being the deliverable.',
+      },
       verifyFile: {
         type: 'string',
         description: 'Path to the oracle script. It is copied back into every candidate directory before verify runs, so a candidate cannot overwrite the thing that judges it.',
@@ -860,6 +896,7 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
       runner?: string
       verify?: string
       verifyFile?: string
+      slice?: string
       rounds?: number
       approaches: string[]
       timeboxMinutes?: number
@@ -875,6 +912,7 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
         ...args.harness === undefined ? {} : { harness: args.harness },
         ...args.verify === undefined ? {} : { verify: args.verify },
         ...args.verifyFile === undefined ? {} : { verifyFile: args.verifyFile },
+        ...args.slice === undefined ? {} : { slice: args.slice },
         ...args.rounds === undefined ? {} : { rounds: args.rounds },
         timeboxMs: (args.timeboxMinutes ?? totem.config.spikeTimeoutMs.get() / 60_000) * 60_000,
         parent: exec.agent,
