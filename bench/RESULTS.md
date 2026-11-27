@@ -329,6 +329,27 @@ out of a 45-minute budget.
 So the earlier "A passed 129/129" was the leak, not reasoning: with the patch out
 of reach, A fails the same edge cases.
 
+## 23 With the correctness suite available
+
+Same task, three genuinely different approaches, each run against the 129-test
+suite that defines correctness.
+
+| arm | tests visible | outcome |
+| --- | --- | --- |
+| A, reasoning alone | no | 14 hidden failures |
+| single design, regex | yes | 22 failures at the time of the check |
+| design B, hand scanner | yes | **129 passed** |
+| design C, tokeniser | yes | **129 passed** |
+
+Two of three designs solve the task the reasoning-only arm failed. This is the
+first configuration in the whole experiment where the tool turns a failure into a
+pass, and it is the one the research predicted: the oracle has to be *available
+and discriminating*, not merely sound.
+
+Caveat: a single attempt that can see the suite may also solve it; the tournament's
+own contribution is separating designs when one of them is wrong, which the failing
+regex design demonstrates here.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
