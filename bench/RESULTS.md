@@ -448,6 +448,19 @@ was not live during these runs — the host still had the previous build, so eac
 tournament recorded `verify_passed` and then disqualified everyone. Workers picked
 their winners by hand. The fix needs a host reload to take effect.
 
+## 29 Live proof that the tool ranks by itself
+
+After the host reload, a three-design tournament with only a `verify` command and
+no harness ranked all three and named a winner:
+
+- c1 winner, c3 and c2 qualified;
+- every candidate carried `verify_passed` from the oracle;
+- the tie on the oracle was broken by the declared `loc` criterion, not by a
+  worker's judgement.
+
+Before the reload the same shape of call returned "all disqualified, no
+measurements". The fix and the reload are what made the tool's own selection real.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
