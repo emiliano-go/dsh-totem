@@ -386,6 +386,28 @@ measured" — because a worker wrote a bash `bench.ts` and the tool launched it 
 `bun`. The harness now starts with the interpreter its shebang names, and a
 candidate that writes shell is measured instead of discarded.
 
+## 26 Fresh race, and why it still is not evidence
+
+New pristine workspaces, isolation demanded in both briefs.
+
+| arm | local oracle | official | provenance |
+| --- | --- | --- | --- |
+| single | 20/20 | **0, compile_failed** | independently written (442 lines) |
+| tournament | 20/20 | **98** | **identical** to the earlier rebuild at `/data/bench/pb/sd-a` |
+
+Two separate failures. The single arm did not vendor its crates, so the grader's
+clean room could not build it — `cargo build --offline` with an empty cache has
+nothing to resolve. The tournament arm ignored the isolation rule and copied the
+prior solution verbatim, which the diff shows in one line.
+
+Isolation has to be enforced by a sandbox, not requested in a brief: both agents
+could read `/data/bench` and one did. Until each arm runs in its own mount
+namespace, any "fresh" comparison on this machine is decorative.
+
+The grader itself flaked once per pair: the first evaluation of each submission
+returned `RuntimeError`, and an immediate rerun scored 98. That is a grading
+artifact, not a submission problem.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
