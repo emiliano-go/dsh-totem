@@ -350,6 +350,24 @@ Caveat: a single attempt that can see the suite may also solve it; the tournamen
 own contribution is separating designs when one of them is wrong, which the failing
 regex design demonstrates here.
 
+## 24 Tool defects found while making it work
+
+1. `verify` existed in `runSpike` but was missing from the tool schema, so every
+   arm that passed it had it silently ignored. Fixed; `rounds` and `verifyFile`
+   added with it.
+2. A live run showed candidates overwriting `check.ts` and being scored by their
+   own script. The oracle is now restored from a protected file immediately before
+   verification; a test writes a fake oracle into each candidate and asserts the
+   score comes from the protected copy.
+3. `rounds` feeds the best candidate's oracle failures into the next round's
+   brief; a fake-subagent test asserts six candidates and the feedback text.
+
+With the correctness suite visible, three independent designs all reached
+129/129 on the ansible task that the reasoning-only arm failed (14 failures).
+The remaining question is not whether the mechanism works but how much of the
+gain needs a discriminating oracle: the coverage simulation puts 94% selection
+accuracy at twenty discriminating checks.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
