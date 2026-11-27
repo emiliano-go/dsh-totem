@@ -481,6 +481,29 @@ single pass: 98-98, 95-92, 39-39, 200-200. Its one apparent success (three desig
 solving an ansible task that reasoning alone failed) was never run against an
 isolated single attempt with the same oracle.
 
+## 31 Headroom is real, and the tournament's split budget eats it
+
+Three identical 20-minute attempts on `dust`, no tournament, no shared state, and
+nothing on the host to copy (previous artifacts archived into a Docker volume).
+
+| attempt | official score |
+| --- | --- |
+| A, Python clone | 55 |
+| B, Rust crate | **74** |
+| C, single-file Rust | 53 |
+
+A twenty-one point spread: attempts differ, so a selector that picked B would score
+74 where a typical attempt gets 55.
+
+The tournament cannot collect that. A candidate inside `spike` receives a fraction
+of the budget (12 of 35 minutes), and B needed the full twenty to reach 74. The tool
+selects one candidate; it never merges three. Its expected result on this task is
+55-65, below the best single attempt.
+
+So the rule this whole document supports: the tournament pays only when a candidate
+is cheap relative to the value of the choice — many small independent decisions, not
+one long build. On every task measured here the opposite held.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
