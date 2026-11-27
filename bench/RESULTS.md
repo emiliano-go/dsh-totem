@@ -504,6 +504,28 @@ So the rule this whole document supports: the tournament pays only when a candid
 is cheap relative to the value of the choice — many small independent decisions, not
 one long build. On every task measured here the opposite held.
 
+## 32 Scoped mode: it runs, and the slice gives no gradient
+
+`spike` now takes a `slice`, builds only that slice in each candidate, ranks by the
+protected oracle and records `DECISION.md` for a composition pass.
+
+Run on `dust`, one 2-minute tournament over a byte-count formatter, then compose.
+
+| arm | official |
+| --- | --- |
+| control, 25 min direct | 76 |
+| scoped, 2 min tournament + 24 min compose | 76 |
+
+Both arms started from the earlier 74-point port that was still on disk, so neither
+is a fresh baseline. Independently, the slice itself tied: all three formatter
+designs scored 8/8 on the oracle and the tournament reported `unresolved`.
+
+Two conditions have to hold for scoped mode to convert anything, and neither held
+here: the slice oracle must separate the designs, and the arms must not share a
+starting implementation. The mechanics are correct — slice brief, protected oracle,
+decision record — but a slice where every design scores the same adds no signal, and
+a shared base makes the comparison decorative.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
