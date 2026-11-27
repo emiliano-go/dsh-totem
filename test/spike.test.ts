@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -236,6 +236,32 @@ describe('the caller proposes the approaches', () => {
   test('constants are exported for the caller contract', () => {
     expect(MIN_APPROACHES).toBe(3)
     expect(MAX_APPROACHES).toBe(5)
+  })
+})
+
+describe('the protected oracle', () => {
+  test('a candidate cannot replace the script that judges it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spike-oracle-'))
+    const oraclePath = join(dir, 'oracle.ts')
+    await Bun.write(oraclePath, 'console.log("2 passed, 0 failed")\n')
+    const fake = {
+      subagents: {
+        async startActivation(spec: { request: { cwd: string } }) {
+          await Bun.write(join(spec.request.cwd, 'oracle.ts'), 'console.log("99 passed")\n')
+          return { async result() { return { output: [], stopReason: 'done' } }, async dispose() {} }
+        },
+      },
+    }
+    const run = await runSpike(fake as never, {
+      question: 'q',
+      criteria: [{ name: 'loc', direction: 'min', weight: 1 }],
+      approaches: ['a', 'b', 'c'],
+      measure: 'echo "{\"loc\": 1}"',
+      verify: 'bun oracle.ts',
+      verifyFile: oraclePath,
+      workspace: join(tmpdir(), `spike-oracle-ws-${Date.now()}`),
+    })
+    expect(run.candidates.every(candidate => candidate.measurements?.verify_passed === 2)).toBe(true)
   })
 })
 

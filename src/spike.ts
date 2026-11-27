@@ -14,7 +14,7 @@
  */
 import { spawn } from 'node:child_process'
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { join, relative } from 'node:path'
+import { basename, join, relative } from 'node:path'
 
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { TotemService } from './service.ts'
@@ -513,6 +513,8 @@ export async function runSpike(
     timeboxMs?: number
     parent: unknown
     signal?: AbortSignal
+    /** File holding the oracle script; restored into every candidate before it runs. */
+    verifyFile?: string
     /** How many refinement rounds to run with the oracle's failures as feedback. */
     rounds?: number
     /** Directory the workspaces are created under; defaults to the process cwd. */
@@ -540,6 +542,11 @@ export async function runSpike(
     ? [...options.criteria, { name: 'verify_passed', direction: 'max' as const, weight: 10 }]
     : options.criteria
   const harnessSource = await resolveHarness(options.harness)
+  // A candidate can overwrite anything in its own directory, including the script
+  // that judges it. The oracle is restored from a protected copy before it runs.
+  const verifyFile = options.verifyFile === undefined || options.verifyFile.trim().length === 0
+    ? undefined
+    : { name: basename(options.verifyFile.trim()), source: await readFile(options.verifyFile.trim(), 'utf8') }
   const verify = (options.verify ?? '').trim()
   const rounds = Math.max(1, Math.min(options.rounds ?? 1, 5))
   const results: SpikeCandidate[] = []
@@ -641,6 +648,7 @@ ${feedback}
         // A sound oracle outranks a caller-written harness: it is the signal the
         // literature says sampling actually scales on.
         if (verify.length > 0) {
+          if (verifyFile !== undefined) await writeFile(join(dir, verifyFile.name), verifyFile.source, 'utf8')
           oracleOutput = await runCommand(verify, dir, Math.min(timeboxMs, 300_000))
           const passed = parsePassCount(oracleOutput)
           measurements = { ...measurements, verify_passed: passed ?? 0, verify_ok: passed !== undefined }
@@ -813,6 +821,10 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
         type: 'string',
         description: 'Sound oracle command run inside every candidate, e.g. the repository test suite. Its pass count ranks the candidates above your own criteria, and its failures become feedback for the next round.',
       },
+      verifyFile: {
+        type: 'string',
+        description: 'Path to the oracle script. It is copied back into every candidate directory before verify runs, so a candidate cannot overwrite the thing that judges it.',
+      },
       rounds: {
         type: 'number',
         description: 'Refinement rounds: after the first round the best candidate\'s oracle failures are given to the next round of candidates (default 1, max 5).',
@@ -835,6 +847,7 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
       contract?: string
       runner?: string
       verify?: string
+      verifyFile?: string
       rounds?: number
       approaches: string[]
       timeboxMinutes?: number
@@ -849,6 +862,7 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
         ...args.measure === undefined ? {} : { measure: args.measure },
         ...args.harness === undefined ? {} : { harness: args.harness },
         ...args.verify === undefined ? {} : { verify: args.verify },
+        ...args.verifyFile === undefined ? {} : { verifyFile: args.verifyFile },
         ...args.rounds === undefined ? {} : { rounds: args.rounds },
         timeboxMs: (args.timeboxMinutes ?? totem.config.spikeTimeoutMs.get() / 60_000) * 60_000,
         parent: exec.agent,
