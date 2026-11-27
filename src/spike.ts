@@ -143,6 +143,9 @@ export function buildBrief(input: {
     if (mvp >= 0) {
       lines[mvp] = `This is a scoped decision: build only ${input.slice.trim()}, as small as it can be while still being judgeable. Do not build the rest of the task; a separate pass composes the winner.`
     }
+    if ((input.contract ?? '').trim().length > 0) {
+      lines.splice(mvp + 1, 0, `The slice must land in exactly this shape — the oracle imports it by name:`, '```', input.contract.trim(), '```')
+    }
   }
   if (input.contract !== undefined && input.contract.trim().length > 0) {
     lines.push(
@@ -560,6 +563,9 @@ export async function runSpike(
   const harnessSource = await resolveHarness(options.harness)
   // A candidate can overwrite anything in its own directory, including the script
   // that judges it. The oracle is restored from a protected copy before it runs.
+  if ((options.slice ?? '').trim().length > 0 && (options.contract ?? '').trim().length === 0) {
+    throw new Error('a scoped tournament needs contract: the exact file name and interface each slice candidate must produce, or the oracle scores filenames instead of designs')
+  }
   const verifyFile = options.verifyFile === undefined || options.verifyFile.trim().length === 0
     ? undefined
     : { name: basename(options.verifyFile.trim()), source: await readFile(options.verifyFile.trim(), 'utf8') }

@@ -257,11 +257,21 @@ describe('scoped decisions', () => {
       criteria: [{ name: 'loc', direction: 'min', weight: 1 }],
       approaches: ['a', 'b', 'c'],
       slice: 'tree layout only',
+      contract: 'export function layout(n: number): string',
       verify: 'bash o.sh',
       workspace: dir,
     })
     expect(prompts.every(prompt => prompt.includes('tree layout only'))).toBe(true)
     expect(prompts.every(prompt => prompt.includes('This is a scoped decision'))).toBe(true)
+    expect(prompts.every(prompt => prompt.includes('export function layout'))).toBe(true)
+    await expect(runSpike(fake as never, {
+      question: 'q',
+      criteria: [{ name: 'loc', direction: 'min', weight: 1 }],
+      approaches: ['a', 'b', 'c'],
+      slice: 'tree layout only',
+      verify: 'bash o.sh',
+      workspace: join(tmpdir(), `spike-slice-missing-${Date.now()}`),
+    })).rejects.toThrow('needs contract')
     const decision = await Bun.file(join(dir, '.spike', run.id, 'DECISION.md')).text()
     expect(decision).toContain('Winner:')
   })
