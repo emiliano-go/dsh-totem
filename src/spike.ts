@@ -919,6 +919,7 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
         ...args.verify === undefined ? {} : { verify: args.verify },
         ...args.verifyFile === undefined ? {} : { verifyFile: args.verifyFile },
         ...args.slice === undefined ? {} : { slice: args.slice },
+        ...args.contract === undefined ? {} : { contract: args.contract },
         ...args.rounds === undefined ? {} : { rounds: args.rounds },
         timeboxMs: (args.timeboxMinutes ?? totem.config.spikeTimeoutMs.get() / 60_000) * 60_000,
         parent: exec.agent,
