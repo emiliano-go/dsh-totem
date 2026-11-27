@@ -239,6 +239,28 @@ describe('the caller proposes the approaches', () => {
   })
 })
 
+describe('ranking with an oracle', () => {
+  test('a criterion nobody measured does not disqualify every candidate', async () => {
+    const fake = {
+      subagents: {
+        async startActivation(spec: { request: { cwd: string } }) {
+          await Bun.write(join(spec.request.cwd, 'o.sh'), 'echo "3 passed, 0 failed"\n')
+          return { async result() { return { output: [], stopReason: 'done' } }, async dispose() {} }
+        },
+      },
+    }
+    const run = await runSpike(fake as never, {
+      question: 'q',
+      criteria: [{ name: 'passes', direction: 'max', weight: 1 }],
+      approaches: ['a', 'b', 'c'],
+      verify: 'bash o.sh',
+      workspace: join(tmpdir(), `spike-criteria-${Date.now()}`),
+    })
+    expect(run.ranking.every(entry => entry.qualified)).toBe(true)
+    expect(run.candidates[0]?.measurements?.verify_passed).toBe(3)
+  })
+})
+
 describe('the protected oracle', () => {
   test('a candidate cannot replace the script that judges it', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'spike-oracle-'))

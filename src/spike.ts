@@ -686,18 +686,24 @@ ${feedback}
     ...candidate,
     measurements: { files: candidate.files, loc: candidate.loc, ...candidate.measurements },
   }))
-  const ranking = rank(measured, criteria)
+  // A criterion nobody measured cannot rank anybody: with a `verify` oracle the
+  // harness keys (passes, build_seconds) are often absent, and treating that as
+  // "missing" disqualified every candidate even though the oracle scored them.
+  const usableCriteria = criteria.filter(criterion =>
+    measured.some(candidate => candidate.measurements?.[criterion.name] !== undefined))
+  const effectiveCriteria = usableCriteria.length > 0 ? usableCriteria : criteria
+  const ranking = rank(measured, effectiveCriteria)
   const qualified = ranking.filter(entry => entry.qualified)
   const pareto = measured
     .filter(candidate => qualified.some(entry => entry.id === candidate.id))
     .filter(candidate => !measured.some(other =>
       other.id !== candidate.id
       && qualified.some(entry => entry.id === other.id)
-      && dominates(other.measurements, candidate.measurements, criteria)))
+      && dominates(other.measurements, candidate.measurements, effectiveCriteria)))
     .map(candidate => candidate.id)
   // How much of the gap between the top two could be noise: the median relative
   // spread of every ranked criterion, weighted like the criteria themselves.
-  const ranked = criteria.filter(criterion => criterion.direction !== 'pass')
+  const ranked = effectiveCriteria.filter(criterion => criterion.direction !== 'pass')
   const noise = ranked.reduce((sum, criterion) => {
     const ratios = measured
       .map(candidate => candidate.spread?.[criterion.name])
