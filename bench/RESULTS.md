@@ -368,6 +368,24 @@ The remaining question is not whether the mechanism works but how much of the
 gain needs a discriminating oracle: the coverage simulation puts 94% selection
 accuracy at twenty discriminating checks.
 
+## 25 sd, single vs tournament, same protected oracle
+
+Both arms had the same 20-check differential oracle and the same cleanroom task.
+
+| arm | official score |
+| --- | --- |
+| single attempt | 98 |
+| tournament, three designs, two rounds | 98 |
+
+A tie, and neither arm is clean evidence: both started from the earlier rebuild at
+`/data/bench/pb/sd-a` (the single arm changed two lines of it), because the brief
+did not forbid reading outside the workspace.
+
+The tournament's own ranking was empty — every candidate was recorded as "not
+measured" — because a worker wrote a bash `bench.ts` and the tool launched it with
+`bun`. The harness now starts with the interpreter its shebang names, and a
+candidate that writes shell is measured instead of discarded.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
