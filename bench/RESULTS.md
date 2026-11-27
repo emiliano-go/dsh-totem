@@ -461,6 +461,26 @@ no harness ranked all three and named a winner:
 Before the reload the same shape of call returned "all disqualified, no
 measurements". The fix and the reload are what made the tool's own selection real.
 
+## 30 Large repair: 191 failures, both arms finish
+
+Fifty functions, 200 behavioural tests, 191 failing at the start, the suite itself
+as the oracle.
+
+| arm | budget | result |
+| --- | --- | --- |
+| single | 30 min | **200 passed** |
+| tournament | 35 min | **200 passed** (30 of the 35 minutes inside the spike) |
+
+A tie, and the mechanism is visible: the breakage was one systematic relation
+(`(i+3)x + 7 mod i+11`), so a single insight fixed all fifty functions. Sampling
+cannot improve on one correct insight, and its three candidate passes consumed
+almost the entire budget before the workspace was repaired.
+
+Across every clean comparison in this document the tournament has never beaten a
+single pass: 98-98, 95-92, 39-39, 200-200. Its one apparent success (three designs
+solving an ansible task that reasoning alone failed) was never run against an
+isolated single attempt with the same oracle.
+
 ## What this establishes
 
 Thirteen problems, thirteen ties, twenty-four arm runs, all graded by the same hidden suites:
