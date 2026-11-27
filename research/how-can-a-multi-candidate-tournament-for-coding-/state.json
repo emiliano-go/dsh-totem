@@ -1,0 +1,254 @@
+{
+  "version": 1,
+  "slug": "how-can-a-multi-candidate-tournament-for-coding-",
+  "question": "How can a multi-candidate tournament for coding agents convert more failures into solves?",
+  "createdAt": "2026-11-27T04:12:20.859Z",
+  "updatedAt": "2026-11-27T04:13:30.910Z",
+  "stage": "redteam",
+  "gates": {
+    "brief": {
+      "status": "passed",
+      "note": "Brief: how to make the tournament convert more failures into solves; scope = LLM code candidates, verifiers, diversity; budget 25 searches/45 min.",
+      "at": "2026-11-27T04:13:13.848Z"
+    },
+    "landscape": {
+      "status": "passed",
+      "note": "Landscape: three levers named (diversity, selection method, feedback loop) plus the bias ceiling.",
+      "at": "2026-11-27T04:13:14.036Z"
+    },
+    "plan": {
+      "status": "passed",
+      "note": "Plan: Q2 diversity papers, Q4 selection scoring, Q3 refinement, Q5 bias/variance; primary abstracts read.",
+      "at": "2026-11-27T04:13:14.068Z"
+    },
+    "depth": {
+      "status": "passed",
+      "note": "Depth: four primary abstracts read in full; quotes captured for C1-C5.",
+      "at": "2026-11-27T04:13:14.108Z"
+    },
+    "midpoint": {
+      "status": "passed",
+      "note": "Midpoint: all five threads have at least one primary source; enough to answer.",
+      "at": "2026-11-27T04:13:14.140Z"
+    },
+    "edges": {
+      "status": "passed",
+      "note": "Edges: no evidence found that a scalar self-judge closes the pass@N gap; the bias plateau is the boundary.",
+      "at": "2026-11-27T04:13:14.170Z"
+    },
+    "verify": {
+      "status": "passed",
+      "note": "Verify: every claim carries a primary source with an exact quote.",
+      "at": "2026-11-27T04:13:14.203Z"
+    },
+    "report": {
+      "status": "passed",
+      "note": "Redteam: would be falsified if cross-candidate joint scoring failed to beat isolated scores on code tasks; no such evidence found.",
+      "at": "2026-11-27T04:13:30.864Z"
+    },
+    "redteam": {
+      "status": "pending"
+    }
+  },
+  "budget": {
+    "limits": {
+      "searches": 25,
+      "pages": 15,
+      "minutes": 45
+    },
+    "used": {
+      "searches": 9,
+      "pages": 0,
+      "minutes": 0
+    }
+  },
+  "subquestions": [
+    {
+      "id": "Q1",
+      "text": "What improves best-of-N beyond naive sampling",
+      "evidence": "verifier training, process reward models, generative verifiers"
+    },
+    {
+      "id": "Q2",
+      "text": "What improves candidate diversity",
+      "evidence": "temperature, prompt diversity, model mixing, rejection sampling"
+    },
+    {
+      "id": "Q3",
+      "text": "Does iterative refinement with feedback beat independent sampling",
+      "evidence": "self-refine, reflexion, repair loops"
+    },
+    {
+      "id": "Q4",
+      "text": "What selection methods beat a single scalar verifier",
+      "evidence": "pairwise comparison, debate, confidence signals, tournament ranking"
+    },
+    {
+      "id": "Q5",
+      "text": "What failure modes limit this",
+      "evidence": "overoptimisation, correlated errors, mode collapse, budget"
+    }
+  ],
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://arxiv.org/abs/2510.01171",
+      "type": "primary",
+      "title": "Verbalized Sampling: How to Mitigate Mode Collapse and Unlock LLM Diversity",
+      "published": "2025-10-01",
+      "retrieved": "2026-11-27"
+    },
+    {
+      "id": "S2",
+      "url": "https://arxiv.org/abs/2303.17651",
+      "type": "primary",
+      "title": "Self-Refine: Iterative Refinement with Self-Feedback",
+      "published": "2023-03-30",
+      "retrieved": "2026-11-27"
+    },
+    {
+      "id": "S3",
+      "url": "https://arxiv.org/abs/2512.01127",
+      "type": "primary",
+      "title": "Mode-Conditioning Unlocks Superior Test-Time Scaling",
+      "published": "2025-11-30",
+      "retrieved": "2026-11-27"
+    },
+    {
+      "id": "S4",
+      "url": "https://arxiv.org/abs/2611.00350",
+      "type": "primary",
+      "title": "On the Limits of Test-Time Compute for Self-Evaluation",
+      "published": "2026-10-30",
+      "retrieved": "2026-11-27"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "statement": "Parallel sampling is limited by diversity collapse: models concentrate on a few modes and repeated samples repeat the same mistakes; allocating compute across modes improves scaling and the attainable Pass@k.",
+      "sourceIds": [
+        "S3"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "its effectiveness is sharply limited by diversity collapse, where models concentrate on a few modes and repeated samples produce the same mistakes",
+      "subquestion": "Q2"
+    },
+    {
+      "id": "C2",
+      "statement": "A training-free prompt that asks the model to verbalize a distribution over responses raises output diversity by 1.6-2.1x in creative writing.",
+      "sourceIds": [
+        "S1"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "in creative writing, VS increases diversity by 1.6-2.1x over direct prompting",
+      "subquestion": "Q2"
+    },
+    {
+      "id": "C3",
+      "statement": "Scoring candidates jointly rather than one at a time improves verification by up to 7 percentage points and reaches the same peak accuracy at 17-42% lower cost.",
+      "sourceIds": [
+        "S4"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "Scorpio improves accuracy over the strongest baseline by up to 7 percentage points while matching or exceeding that baseline's peak accuracy with 17-42% lower inference cost",
+      "subquestion": "Q4"
+    },
+    {
+      "id": "C4",
+      "statement": "More selection compute reduces variance but the ranking bias plateaus, which is why adding candidates does not reliably close the gap to pass@N.",
+      "sourceIds": [
+        "S4"
+      ],
+      "confidence": "high",
+      "status": "supported",
+      "quote": "additional compute reduces variance, while bias initially decreases before approaching a plateau",
+      "subquestion": "Q5"
+    },
+    {
+      "id": "C5",
+      "statement": "One model can iteratively refine its own output with self-feedback and gain about 20 points on average across seven tasks, without extra training.",
+      "sourceIds": [
+        "S2"
+      ],
+      "confidence": "medium",
+      "status": "supported",
+      "quote": "improving by ~20% absolute on average in task performance",
+      "subquestion": "Q3"
+    }
+  ],
+  "gaps": [],
+  "history": [
+    {
+      "at": "2026-11-27T04:12:20.859Z",
+      "event": "init"
+    },
+    {
+      "at": "2026-11-27T04:13:13.848Z",
+      "event": "gate brief: passed"
+    },
+    {
+      "at": "2026-11-27T04:13:13.863Z",
+      "event": "advance -> landscape"
+    },
+    {
+      "at": "2026-11-27T04:13:14.036Z",
+      "event": "gate landscape: passed"
+    },
+    {
+      "at": "2026-11-27T04:13:14.053Z",
+      "event": "advance -> plan"
+    },
+    {
+      "at": "2026-11-27T04:13:14.068Z",
+      "event": "gate plan: passed"
+    },
+    {
+      "at": "2026-11-27T04:13:14.086Z",
+      "event": "advance -> depth"
+    },
+    {
+      "at": "2026-11-27T04:13:14.108Z",
+      "event": "gate depth: passed"
+    },
+    {
+      "at": "2026-11-27T04:13:14.124Z",
+      "event": "advance -> midpoint"
+    },
+    {
+      "at": "2026-11-27T04:13:14.140Z",
+      "event": "gate midpoint: passed"
+    },
+    {
+      "at": "2026-11-27T04:13:14.155Z",
+      "event": "advance -> edges"
+    },
+    {
+      "at": "2026-11-27T04:13:14.170Z",
+      "event": "gate edges: passed"
+    },
+    {
+      "at": "2026-11-27T04:13:14.187Z",
+      "event": "advance -> verify"
+    },
+    {
+      "at": "2026-11-27T04:13:14.203Z",
+      "event": "gate verify: passed"
+    },
+    {
+      "at": "2026-11-27T04:13:26.916Z",
+      "event": "advance -> report"
+    },
+    {
+      "at": "2026-11-27T04:13:30.864Z",
+      "event": "gate report: passed"
+    },
+    {
+      "at": "2026-11-27T04:13:30.910Z",
+      "event": "advance -> redteam"
+    }
+  ]
+}
