@@ -83,6 +83,7 @@ describe('native memory tools', () => {
       'memory_workflow', 'memory_profile', 'memory_graph', 'memory_rollup',
       'memory_heat', 'memory_decay', 'memory_induce_workflow', 'memory_maintenance',
       'memory_touch',
+      'memory_prune', 'memory_metrics',
       'memory_export_markdown', 'memory_import_markdown',
     ]) expect(names).toContain(name)
     const create = tools.find(tool => tool.name === 'memory_create')

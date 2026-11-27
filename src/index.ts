@@ -27,6 +27,8 @@ import { registerCiTools } from './ci.ts'
 import { UnreadStore } from './unread.ts'
 import { registerInterruptedTurnResume } from './resume.ts'
 import { OverviewService } from './overview.ts'
+import { HarnessMemory } from './harness-memory.ts'
+import { registerHarnessTools } from './harness-tools.ts'
 import { statePath } from './store.ts'
 import { MEMORY_PROMPT } from './prompt.ts'
 import { CompactionMemory } from './compaction.ts'
@@ -86,6 +88,14 @@ export interface Config {
   readRegister: boolean
   /** Register a memory after every successful write, edit, or patch. */
   autoRegister: boolean
+  /** Glob patterns whose files never enter automatic file memory. */
+  memoryIgnore: string[]
+  /** Age in days after which a cached file TLDR is ignored. */
+  fileContextTtlDays: number
+  /** Mark memories with changed evidence stale after a file write. */
+  memoryInvalidateOnWrite: boolean
+  /** Append memory and harness metrics to metrics.jsonl. */
+  metrics: boolean
   /** Serve a fresh file TLDR instead of the full body on a whole-file read. */
   preferFileContext: boolean
   /** Let the secondary model author memory prose. */
@@ -204,6 +214,18 @@ export const Config: z<Config> = z.object({
   tldr: z.boolean().default(true).volatile(),
   readRegister: z.boolean().default(true),
   autoRegister: z.boolean().default(true),
+  memoryIgnore: z.array(String).default([
+    '.spike/**',
+    '.tmp-*/**',
+    'bench/runs/**',
+    'designs/**',
+    'research/**',
+    'node_modules/**',
+    '.git/**',
+  ]),
+  fileContextTtlDays: z.number().step(1).min(0).default(14),
+  memoryInvalidateOnWrite: z.boolean().default(true),
+  metrics: z.boolean().default(true),
   preferFileContext: z.boolean().default(true),
   distill: z.boolean().default(true),
   digest: z.boolean().default(true),
@@ -282,6 +304,10 @@ export function resolveConfig(config: Config): TotemConfig {
     tldr: config.tldr,
     readRegister: config.readRegister,
     autoRegister: config.autoRegister,
+    memoryIgnore: config.memoryIgnore,
+    fileContextTtlDays: config.fileContextTtlDays,
+    memoryInvalidateOnWrite: config.memoryInvalidateOnWrite,
+    metrics: config.metrics,
     preferFileContext: config.preferFileContext,
     distill: config.distill,
     digest: config.digest,
@@ -453,12 +479,14 @@ export function apply(ctx: Context, config: Config): void {
   })
 
   registerMemoryTools(ctx, totem, { conflicts })
+  const harness = new HarnessMemory()
+  registerHarnessTools(ctx, harness, totem.metrics)
   registerToolMemoryGate(ctx, totem, {
     enabled: () => totem.config.toolGate.get(),
     ttlMs: totem.config.toolGateTtlMs,
     turns: totem.config.toolGateTurns,
   })
-  registerSpikeTool(ctx, totem)
+  registerSpikeTool(ctx, totem, harness)
   registerUserTools(ctx, totem)
   registerNotifyTool(ctx, totem)
   registerNotificationHooks(ctx, totem)
@@ -852,6 +880,11 @@ export function apply(ctx: Context, config: Config): void {
           : fallback,
       ].filter(Boolean).join('\n\n')
       if (text === '') return decision
+      totem.metrics.record('memory.digest', {
+        bytes: text.length,
+        context: contextText.length > 0,
+        selected: Array.isArray(context?.selectedIds) ? context.selectedIds.length : 0,
+      })
       if (session !== undefined) seen.add(session)
       if (contextText.length > 0 && Array.isArray(context?.selectedIds)) {
         void totem.call('memory_touch_tool', {

@@ -9,6 +9,8 @@ import { existsSync } from 'node:fs'
 import { mkdir, symlink } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { statePath } from './store.ts'
+import { ignoreFileMemory } from './memory-paths.ts'
+import { MetricsLog } from './metrics.ts'
 import type { Context, Volatile } from '@deepseek-ai/cordis'
 import { Service } from '@deepseek-ai/cordis'
 import { Client } from '@modelcontextprotocol/client'
@@ -39,6 +41,14 @@ export interface TotemConfig {
   readRegister: boolean
   /** Register memories after successful file writes/edits/patches. */
   autoRegister: boolean
+  /** Glob patterns whose files never enter automatic file memory. */
+  memoryIgnore: string[]
+  /** Age in days after which a cached file TLDR is ignored. */
+  fileContextTtlDays: number
+  /** Mark memories with changed evidence stale after a file write. */
+  memoryInvalidateOnWrite: boolean
+  /** Append memory and harness metrics to metrics.jsonl. */
+  metrics: boolean
   /** Serve a fresh file TLDR instead of the full body on a whole-file read. */
   preferFileContext: boolean
   /** Let the secondary model author memory prose. */
@@ -171,6 +181,8 @@ export class TotemService extends Service {
   /** Explicit project per child session, set when a delegation is published. */
   private readonly overrides = new Map<string, string>()
   private lastProjectPath = ''
+  /** Local metrics sink, separate from memory content. */
+  readonly metrics = new MetricsLog(statePath('metrics.jsonl'), () => this.config.metrics)
 
   constructor(ctx: Context, readonly config: TotemConfig) {
     super(ctx, 'totem')
@@ -387,7 +399,20 @@ export class TotemService extends Service {
       }, input.signal)
       if (typeof result !== 'object' || result === null) return undefined
       const context = result as CachedFileContext
-      return context.fresh === true ? context : undefined
+      if (context.fresh !== true) return undefined
+      const ttl = this.config.fileContextTtlDays
+      if (ttl > 0 && context.updatedAt !== undefined) {
+        const age = Date.now() - Date.parse(context.updatedAt)
+        if (Number.isFinite(age) && age > ttl * 86_400_000) {
+          this.metrics?.record('memory.file_touch', {
+            action: 'expired',
+            tool: 'read',
+            path: input.path,
+          })
+          return undefined
+        }
+      }
+      return context
     } catch (error) {
       this.warn('cachedRead', error)
       return undefined
@@ -401,12 +426,17 @@ export class TotemService extends Service {
     if (!this.config.autoRegister || !this.config.readRegister) return
     try {
       const project = await this.projectFor(touch.agent, touch.signal)
+      if (ignoreFileMemory(touch.path, this.config.memoryIgnore, project)) {
+        this.metrics?.record('memory.file_touch', { action: 'ignored', tool: touch.tool, path: touch.path })
+        return
+      }
       await this.call('memory_file_context_tool', withoutUndefined({
         path: touch.path,
         reason: 'read',
         tags: ['read'],
         project,
       }), touch.signal)
+      this.metrics?.record('memory.file_touch', { action: 'registered', tool: touch.tool, path: touch.path })
     } catch (error) {
       this.warn('recordRead', error)
     }
@@ -435,10 +465,14 @@ export class TotemService extends Service {
   async recordWrite(touch: FileTouch): Promise<void> {
     if (!this.config.autoRegister) return
     try {
+      const project = await this.projectFor(touch.agent, touch.signal)
+      if (ignoreFileMemory(touch.path, this.config.memoryIgnore, project)) {
+        this.metrics?.record('memory.file_touch', { action: 'ignored', tool: touch.tool, path: touch.path })
+        return
+      }
       const draft = await this.draft(touch)
       const name = basename(touch.path)
       const reason = draft?.reason ?? 'Agent code change'
-      const project = await this.projectFor(touch.agent, touch.signal)
       await this.call('memory_file_context_tool', withoutUndefined({
         path: touch.path,
         reason,
@@ -462,6 +496,22 @@ export class TotemService extends Service {
           project,
         }), touch.signal)
       }
+      if (this.config.memoryInvalidateOnWrite) {
+        try {
+          const invalidated = await this.call('memory_invalidate_paths_tool', {
+            paths: [touch.path],
+            reason: `file ${touch.action}`,
+            project,
+          }, touch.signal) as { count?: unknown }
+          this.metrics?.record('memory.invalidate', {
+            path: touch.path,
+            count: typeof invalidated?.count === 'number' ? invalidated.count : 0,
+          })
+        } catch (error) {
+          this.warn('memoryInvalidateOnWrite', error)
+        }
+      }
+      this.metrics?.record('memory.file_touch', { action: 'registered', tool: touch.tool, path: touch.path })
     } catch (error) {
       this.warn('recordWrite', error)
     }

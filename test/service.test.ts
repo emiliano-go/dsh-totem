@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { TotemService, type TotemConfig } from '../src/service.ts'
@@ -21,6 +21,7 @@ const config: TotemConfig = {
   command: 'totem-mcp', args: [], env: {},
   provider: { get: () => 'test' } as any, model: { get: () => 'test' } as any,
   readRegister: true, autoRegister: true, preferFileContext: true,
+  memoryIgnore: ['.spike/**'], fileContextTtlDays: 14, memoryInvalidateOnWrite: false, metrics: false,
   distill: true, digest: true, maxTokens: 128, maxInputBytes: 4096, timeoutMs: 20000, debug: false,
 }
 
@@ -74,6 +75,18 @@ test('recordRead stores a file-state TLDR, not a read marker', async () => {
   expect(text).toContain('Queue helpers')
   expect(text).not.toContain('Read queue.py')
 }, 60000)
+
+test('recordWrite skips ignored scratch paths', async () => {
+  const project = mkdtempSync(join(tmpdir(), 'dsh-totem-ignore-'))
+  const dir = join(project, '.spike', 'candidate')
+  mkdirSync(dir, { recursive: true })
+  const path = join(dir, 'impl.ts')
+  writeFileSync(path, 'export const candidate = true\n')
+  const totem = service(project)
+  await totem.recordWrite({ agent: {}, path, tool: 'write', action: 'write' })
+  const listed = await totem.call('memory_list_tool', { project, limit: 20 })
+  expect(JSON.stringify(listed)).not.toContain('file_tldr')
+})
 
 test('cachedRead returns a fresh file TLDR', async () => {
   const project = mkdtempSync(join(tmpdir(), 'dsh-totem-cache-'))

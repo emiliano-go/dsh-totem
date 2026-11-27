@@ -73,7 +73,23 @@ export function registerMemoryTools(ctx: Context, totem: TotemService, dependenc
       async execute(args, exec) {
         if (map !== undefined) return map(args as Record<string, unknown>, exec)
         const project = await totem.projectFor(exec.agent, exec.signal)
-        return totem.call(tool, { ...args as Record<string, unknown>, project }, exec.signal)
+        const started = Date.now()
+        const value = await totem.call(tool, { ...args as Record<string, unknown>, project }, exec.signal)
+        if (name === 'memory_search' || name === 'engineering_context') {
+          totem.metrics.record('memory.query', {
+            tool: name,
+            ms: Date.now() - started,
+            bytes: JSON.stringify(value).length,
+            results: Array.isArray(value)
+              ? value.length
+              : typeof value === 'object' && value !== null
+                ? Array.isArray((value as { selectedIds?: unknown }).selectedIds)
+                  ? (value as { selectedIds: unknown[] }).selectedIds.length
+                  : 0
+                : 0,
+          })
+        }
+        return value
       },
     }))
   }
@@ -421,4 +437,26 @@ export function registerMemoryTools(ctx: Context, totem: TotemService, dependenc
     tolerance: { type: 'number', description: 'Allowed recall/MRR regression (default 0.02).' },
     p95_ms: { type: 'number', description: 'Latency budget for the gate (default 2000).' },
   }, 'totem_eval_tool')
+
+  register('memory_prune', 'Prune stale operational file-state TLDRs. Durable decisions, gotchas, and architecture memories are never touched.', {
+    max_age_days: { type: 'number', description: 'Only items older than this many days (default 14).' },
+    paths: { type: 'array', items: { type: 'string' }, description: 'Optional path prefixes; defaults to scratch/benchmark roots.' },
+    dry_run: { type: 'boolean', description: 'Report candidates without deleting (default true).' },
+  }, 'memory_prune_file_state_tool')
+
+  ctx.tools.register(defineTool({
+    name: 'memory_metrics',
+    description: 'Read recent memory and harness metrics from metrics.jsonl. Use it to check memory hit rate, latency, and file-memory noise over time.',
+    parameters: {
+      limit: { type: 'number', description: 'Newest events to return (default 200, max 1000).' },
+    } as never,
+    output: {
+      schema: { type: 'json' },
+      render: (_args, value) => TEXT(value),
+    },
+    async execute(args: Record<string, unknown>) {
+      const limit = typeof args.limit === 'number' ? args.limit : 200
+      return totem.metrics.summary(limit)
+    },
+  }))
 }

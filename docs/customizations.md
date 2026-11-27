@@ -210,6 +210,8 @@ Everything lives under `~/.dsh/totem/` unless noted:
 | `session-tldr.json` | Session TLDR records |
 | `unread.json` | Host-authoritative unread marks |
 | `usage.jsonl` | Usage/token history for Overview |
+| `metrics.jsonl` | Memory and harness metrics (append-only) |
+| `harness-edits.jsonl` | Harness-optimization attempts, separate from task memory |
 | `pipelines/<run-id>/` | Audit findings, pages, raw scanner output, report |
 | `user` | Global user profile and preference state used by the user tools |
 | `ledgers/` | Session working-state ledgers |

@@ -46,6 +46,7 @@ The durable inventory is in [`docs/`](docs/README.md):
 | [Skills](docs/skills.md) | Portable skills, workflow projection, external installers |
 | [Pipelines](docs/pipelines.md) | Opt-in audit tools |
 | [Operations](docs/operations.md) | Restart, resume, unread, titles/TLDRs, approvals, proxy, notifications |
+| [Metrics](docs/metrics.md) | Local JSONL metrics and separate harness history |
 | [New machine](docs/new-machine.md) | Exact rebuild path: versions, profile dependencies, services, credentials, skills, and state migration |
 
 ## Requirements
@@ -75,6 +76,12 @@ The plugin surface tracks the 0.10.0 tool set:
   classes exist.
 - `memory_consolidate` clusters near-duplicates; it is a dry run unless
   `apply` is true.
+- `memory_prune` removes stale operational file-state TLDRs only; durable
+  decisions, gotchas, and architecture records are untouched.
+- `memory_metrics` reads `~/.dsh/totem/metrics.jsonl` for file-memory noise,
+  query latency, digest size, and recovery size.
+- `harness_history` and `harness_record` keep harness-optimization attempts in
+  a separate store, not in task memory.
 - `memory_file_context` stores one current-state TLDR per file, keyed by content
   hash; repeated reads return `fresh: true` without rewriting.
 - A whole-file `read` checks the cached TLDR first. When the file is unchanged,
@@ -175,6 +182,10 @@ The remaining knobs are file-config only:
 | `distill` | Let the secondary model author memory (default true). |
 | `readRegister` | Register a deterministic memory after every successful read (default true). |
 | `autoRegister` | Register after every write/edit/patch (default true). |
+| `memoryIgnore` | Scratch/benchmark globs that never enter automatic file memory (default `.spike/**`, `.tmp-*/**`, `bench/runs/**`, `designs/**`, `research/**`). |
+| `fileContextTtlDays` | Ignore cached file TLDRs older than this many days (default 14). |
+| `memoryInvalidateOnWrite` | Mark memories with changed evidence stale after a write (default true). |
+| `metrics` | Append memory and harness events to `~/.dsh/totem/metrics.jsonl` (default true). |
 | `preferFileContext` | Serve a fresh file TLDR instead of the full body on a whole-file read (default true). |
 | `digest` | Inject a recent-memory digest at the first step of a session (default true). |
 | `maxTokens`, `maxInputBytes`, `timeoutMs` | Distillation and MCP bounds. |

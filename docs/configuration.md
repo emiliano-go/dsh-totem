@@ -34,6 +34,10 @@ The resolved child environment is `TOTEM_EMBEDDING_BACKEND`,
 | `tldr` | `true` | yes | Generate a hover TLDR for the last completed turns. |
 | `readRegister` | `true` | no | Register a deterministic file-state memory after every successful read. |
 | `autoRegister` | `true` | no | Register file and symbol memories after write/edit/patch. |
+| `memoryIgnore` | scratch/benchmark globs | no | Files that never enter automatic file memory: `.spike/**`, `.tmp-*/**`, `bench/runs/**`, `designs/**`, `research/**`, `node_modules/**`, `.git/**`. |
+| `fileContextTtlDays` | `14` | no | Ignore cached file TLDRs older than this many days. |
+| `memoryInvalidateOnWrite` | `true` | no | Mark memories with changed evidence `potentially_stale` after a file write. |
+| `metrics` | `true` | no | Append memory and harness events to `~/.dsh/totem/metrics.jsonl`. |
 | `preferFileContext` | `true` | no | Return a fresh file TLDR instead of the full body on a whole-file read. |
 | `distill` | `true` | no | Let the secondary model author memory prose; when false the deterministic draft is used and compaction has no Totem target. |
 | `digest` | `true` | no | Inject a recent-memory digest at the first step of a session. |

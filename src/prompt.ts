@@ -22,6 +22,13 @@ for earlier work. Reuse is the token-efficient path.
 - \`engineering_context\` — assemble ranked context for a task and tags.
 - \`memory_for_tool\` — read memories associated with a tool before calling it.
 
+## Harness history
+
+Harness edits have a separate history from task memory. Before changing a
+harness mechanism, call \`harness_history\`; after a measured attempt, call
+\`harness_record\` with the root cause, prediction, observed result, benchmark,
+model, and commit. Never put harness-edit records in task memory.
+
 ## Tool-associated memories
 
 \`memory_create\` and \`memory_update\` accept \`tools: ["write", "edit", ...]\`.
