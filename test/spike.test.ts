@@ -328,6 +328,11 @@ describe('the measurement command', () => {
     expect(measurementCommand({ harnessed: true, harness: 'bench.sh' })).toBe('bash bench.sh')
   })
 
+  test('a bash harness is started with bash, not bun', () => {
+    expect(measurementCommand({ harnessed: true, harness: '#!/usr/bin/env bash\necho hi\n' })).toBe('bash bench.sh')
+    expect(measurementCommand({ harnessed: true, harness: '#!/usr/bin/env python3\nprint(1)\n' })).toBe('python3 bench.py')
+  })
+
   test('the harness file is named for the runner', () => {
     expect(harnessFileName('python3 bench.py')).toBe('bench.py')
     expect(harnessFileName('bash bench.sh')).toBe('bench.sh')

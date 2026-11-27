@@ -152,13 +152,21 @@ export class CompactionMemory {
         this.blocks.read(sessionId).catch(() => []),
       ]) as [BudgetItem[] | unknown, BudgetItem[] | unknown, { summary: string }[]]
       const latestCompact = blocks.length === 0 ? '' : blocks[blocks.length - 1].summary
-      return formatRecovery(
+      const recovery = formatRecovery(
         Array.isArray(recent) ? recent as BudgetItem[] : [],
         Array.isArray(tasks) ? tasks as BudgetItem[] : [],
         maxTokens,
         this.ledger?.render(sessionId, Math.max(0, Math.floor(maxTokens * 0.5))) ?? '',
         latestCompact,
       )
+      // Test doubles and older callers may omit the sink; recovery must not fail on metrics.
+      this.totem.metrics?.record?.('memory.recovery', {
+        bytes: recovery.length,
+        compact: latestCompact.length > 0,
+        durable: Array.isArray(recent) ? recent.length : 0,
+        tasks: Array.isArray(tasks) ? tasks.length : 0,
+      })
+      return recovery
     } catch {
       return ''
     }

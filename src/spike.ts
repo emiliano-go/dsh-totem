@@ -18,6 +18,7 @@ import { basename, join, relative } from 'node:path'
 
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { TotemService } from './service.ts'
+import type { HarnessMemory } from './harness-memory.ts'
 
 /** One thing the winner must be better at. */
 export interface SpikeCriterion {
@@ -386,10 +387,15 @@ export function measurementCommand(input: { harnessed: boolean; runner?: string;
     const runner = (input.runner ?? '').trim()
     if (runner.length > 0) return runner
     // A harness written in Python or shell cannot be started with bun. Infer the
-    // interpreter from the file the caller supplied rather than failing silently.
-    const name = (input.harness ?? '').trim()
-    if (name.endsWith('.py')) return 'python3 bench.py'
-    if (name.endsWith('.sh')) return 'bash bench.sh'
+    // interpreter from the source or the file name the caller supplied rather
+    // than failing silently: a bash harness run with bun is a syntax error, and a
+    // candidate that writes one would be scored as "not measured".
+    const source = (input.harness ?? '').trim()
+    const shebang = source.startsWith('#!') ? source.split('\n', 1)[0] ?? '' : ''
+    if (shebang.includes('python')) return 'python3 bench.py'
+    if (shebang.includes('bash') || shebang.includes('/sh')) return 'bash bench.sh'
+    if (source.endsWith('.py')) return 'python3 bench.py'
+    if (source.endsWith('.sh')) return 'bash bench.sh'
     return 'bun run bench.ts'
   }
   const measure = (input.measure ?? '').trim()
@@ -625,7 +631,7 @@ ${feedback}
         const stats = await inspectDir(dir)
         let measurements: Record<string, number | boolean> | undefined
         if (harnessed) await writeFile(join(dir, harnessFileName(options.runner)), harnessSource as string, 'utf8')
-        const command = measurementCommand({ harnessed, ...options.runner === undefined ? {} : { runner: options.runner }, ...options.measure === undefined ? {} : { measure: options.measure }, ...options.harness === undefined ? {} : { harness: options.harness } })
+        const command = measurementCommand({ harnessed, ...options.runner === undefined ? {} : { runner: options.runner }, ...options.measure === undefined ? {} : { measure: options.measure }, ...harnessSource === undefined ? {} : { harness: harnessSource } })
         let spread: Record<string, SpikeSpread> | undefined
         if (command !== undefined && command.trim().length > 0) {
           const numeric: Record<string, number[]> = {}
@@ -772,7 +778,7 @@ export function renderSpike(run: SpikeRun): string {
 }
 
 /** Register the model-facing tool. */
-export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, totem: TotemService): void {
+export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, totem: TotemService, harness?: HarnessMemory): void {
   ctx.tools.register(defineTool({
     name: 'spike',
     description:
@@ -869,6 +875,25 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
         workspace: (exec.agent as { session?: { header?: { cwd?: string } } } | undefined)?.session?.header?.cwd,
         ...exec.signal === undefined ? {} : { signal: exec.signal },
       })
+      if (harness !== undefined) {
+        const winner = run.ranking.find(entry => entry.id === run.winner)
+        await harness.record({
+          rootCause: run.question,
+          edit: winner === undefined
+            ? `no qualified winner (${run.verdict})`
+            : run.candidates.find(candidate => candidate.id === winner.id)?.approach ?? winner.id,
+          rationale: `criteria: ${run.criteria.map(criterion => criterion.name).join(', ')}`,
+          observed: `verdict=${run.verdict}; winner=${run.winner ?? 'none'}; score=${winner?.score ?? 'n/a'}`,
+          benchmark: run.verify ?? run.measure ?? 'spike',
+          round: 1,
+          status: run.verdict === 'winner' ? 'accepted' : 'proposed',
+          metrics: {
+            candidates: run.candidates.length,
+            repeats: run.repeats,
+            score: winner?.score ?? 0,
+          },
+        }).catch(() => {})
+      }
       return renderSpike(run)
     },
   }))
