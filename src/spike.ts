@@ -416,6 +416,12 @@ export function parsePassCount(output: string): number | undefined {
   return undefined
 }
 
+/** How many checks the oracle reported failing, when it says so. */
+export function parseFailCount(output: string): number {
+  const match = /(\d+)\s+(?:failed|failing)/i.exec(output)
+  return match === null ? 0 : Number(match[1])
+}
+
 /**
  * The filename the shared benchmark is written as. A caller measuring a Python
  * project runs `python3 bench.py`, so the file has to be bench.py, not bench.ts.
@@ -507,6 +513,8 @@ export async function runSpike(
     timeboxMs?: number
     parent: unknown
     signal?: AbortSignal
+    /** How many refinement rounds to run with the oracle's failures as feedback. */
+    rounds?: number
     /** Directory the workspaces are created under; defaults to the process cwd. */
     workspace?: string
   },
@@ -532,108 +540,133 @@ export async function runSpike(
     ? [...options.criteria, { name: 'verify_passed', direction: 'max' as const, weight: 10 }]
     : options.criteria
   const harnessSource = await resolveHarness(options.harness)
+  const verify = (options.verify ?? '').trim()
+  const rounds = Math.max(1, Math.min(options.rounds ?? 1, 5))
   const results: SpikeCandidate[] = []
-  await Promise.all(
-    approaches.map(async (approach, index) => {
-      const dir = join(root, `${index + 1}`)
-      await mkdir(dir, { recursive: true })
-      const harnessed = harnessSource !== undefined && harnessSource.trim().length > 0
-      const brief = buildBrief({
-        question: options.question,
-        approach,
-        criteria: options.criteria,
-        measure: options.measure,
-        dir,
-        timeboxMs,
-        ...options.contract === undefined ? {} : { contract: options.contract },
-        ...options.runner === undefined ? {} : { runner: options.runner },
-        harnessed,
-      })
-      await writeFile(join(dir, 'BRIEF.md'), brief, 'utf8')
-      if (options.contract !== undefined && options.contract.trim().length > 0) {
-        const commented = options.contract.trim().split('\n').map(line => `// ${line}`).join('\n')
-        await writeFile(join(dir, 'impl.ts'), `// Implement the contract below. The harness imports this module.\n//\n${commented}\n`, 'utf8')
-      }
-      if (harnessed) await writeFile(join(dir, harnessFileName(options.runner)), harnessSource as string, 'utf8')
+  const oracleTail = new Map<string, string>()
+  // The oracle's failure text is the feedback that makes the next round better
+  // than a fresh sample: self-correction needs an external signal to act on.
+  let feedback = ''
+  for (let round = 1; round <= rounds; round += 1) {
+    const beforeRound = results.length
+    await Promise.all(
+      approaches.map(async (approach, index) => {
+        const dir = join(root, round === 1 ? `${index + 1}` : `r${round}-${index + 1}`)
+        await mkdir(dir, { recursive: true })
+        const harnessed = harnessSource !== undefined && harnessSource.trim().length > 0
+        const brief = buildBrief({
+          question: options.question,
+          approach,
+          criteria: options.criteria,
+          measure: options.measure,
+          dir,
+          timeboxMs,
+          ...options.contract === undefined ? {} : { contract: options.contract },
+          ...options.runner === undefined ? {} : { runner: options.runner },
+          harnessed,
+        }) + (feedback.length === 0 ? '' : `
 
-      const controller = new AbortController()
-      const started = Date.now()
-      const timer = setTimeout(() => controller.abort(new Error('timebox')), timeboxMs)
-      const candidate: SpikeCandidate = {
-        id: `c${index + 1}`,
-        approach,
-        dir: relative(process.cwd(), dir),
-        elapsedMs: 0,
-        timedOut: false,
-        files: 0,
-        loc: 0,
-      }
-      try {
-        const activation = await deps.subagents!.startActivation({
-          provider: 'fork',
-          label: `spike ${index + 1}`,
-          request: {
-            prompt: [{ type: 'text', text: brief }],
-            parent: options.parent,
-            signal: controller.signal,
-            cwd: dir,
-          },
-          signal: options.signal ?? controller.signal,
-          delivery: 'caller',
-        })
+## Feedback from the previous round
+
+${feedback}
+`)
+        await writeFile(join(dir, 'BRIEF.md'), brief, 'utf8')
+        if (options.contract !== undefined && options.contract.trim().length > 0) {
+          const commented = options.contract.trim().split('\n').map(line => `// ${line}`).join('\n')
+          await writeFile(join(dir, 'impl.ts'), `// Implement the contract below. The harness imports this module.\n//\n${commented}\n`, 'utf8')
+        }
+        if (harnessed) await writeFile(join(dir, harnessFileName(options.runner)), harnessSource as string, 'utf8')
+
+        const controller = new AbortController()
+        const started = Date.now()
+        const timer = setTimeout(() => controller.abort(new Error('timebox')), timeboxMs)
+        const candidate: SpikeCandidate = {
+          id: round === 1 ? `c${index + 1}` : `c${index + 1}r${round}`,
+          approach,
+          dir: relative(process.cwd(), dir),
+          elapsedMs: 0,
+          timedOut: false,
+          files: 0,
+          loc: 0,
+        }
+        let oracleOutput = ''
         try {
-          await activation.result
+          const activation = await deps.subagents!.startActivation({
+            provider: 'fork',
+            label: `spike ${candidate.id}`,
+            request: {
+              prompt: [{ type: 'text', text: brief }],
+              parent: options.parent,
+              signal: controller.signal,
+              cwd: dir,
+            },
+            signal: options.signal ?? controller.signal,
+            delivery: 'caller',
+          })
+          try {
+            await activation.result
+          } finally {
+            await activation.dispose().catch(() => undefined)
+          }
+        } catch (error) {
+          candidate.timedOut = controller.signal.aborted
+          if (!candidate.timedOut) candidate.error = (error as Error)?.message ?? String(error)
         } finally {
-          await activation.dispose().catch(() => undefined)
+          clearTimeout(timer)
         }
-      } catch (error) {
-        candidate.timedOut = controller.signal.aborted
-        if (!candidate.timedOut) candidate.error = (error as Error)?.message ?? String(error)
-      } finally {
-        clearTimeout(timer)
-      }
-      candidate.elapsedMs = Date.now() - started
-      const stats = await inspectDir(dir)
-      let measurements: Record<string, number | boolean> | undefined
-      if (harnessed) await writeFile(join(dir, harnessFileName(options.runner)), harnessSource as string, 'utf8')
-      const command = measurementCommand({ harnessed, ...options.runner === undefined ? {} : { runner: options.runner }, ...options.measure === undefined ? {} : { measure: options.measure }, ...options.harness === undefined ? {} : { harness: options.harness } })
-      let spread: Record<string, SpikeSpread> | undefined
-      if (command !== undefined && command.trim().length > 0) {
-        const numeric: Record<string, number[]> = {}
-        const booleans: Record<string, boolean> = {}
-        for (let round = 0; round < repeats; round += 1) {
-          const raw = await runCommand(command, dir, Math.min(timeboxMs, 120_000))
-          const reading = readMeasurements(raw)
-          if (Object.keys(reading).length === 0 && round === 0) {
-            candidate.error = candidate.error ?? 'the measurement command printed no JSON object'
+        candidate.elapsedMs = Date.now() - started
+        const stats = await inspectDir(dir)
+        let measurements: Record<string, number | boolean> | undefined
+        if (harnessed) await writeFile(join(dir, harnessFileName(options.runner)), harnessSource as string, 'utf8')
+        const command = measurementCommand({ harnessed, ...options.runner === undefined ? {} : { runner: options.runner }, ...options.measure === undefined ? {} : { measure: options.measure }, ...options.harness === undefined ? {} : { harness: options.harness } })
+        let spread: Record<string, SpikeSpread> | undefined
+        if (command !== undefined && command.trim().length > 0) {
+          const numeric: Record<string, number[]> = {}
+          const booleans: Record<string, boolean> = {}
+          for (let rep = 0; rep < repeats; rep += 1) {
+            const raw = await runCommand(command, dir, Math.min(timeboxMs, 120_000))
+            const reading = readMeasurements(raw)
+            if (Object.keys(reading).length === 0 && rep === 0) {
+              candidate.error = candidate.error ?? 'the measurement command printed no JSON object'
+            }
+            for (const [key, value] of Object.entries(reading)) {
+              if (typeof value === 'number') (numeric[key] ??= []).push(value)
+              else booleans[key] = booleans[key] === true ? true : value
+            }
           }
-          for (const [key, value] of Object.entries(reading)) {
-            if (typeof value === 'number') (numeric[key] ??= []).push(value)
-            else booleans[key] = booleans[key] === true ? true : value
-          }
+          const aggregated = aggregate(numeric)
+          measurements = { ...aggregated.measurements, ...booleans }
+          if (Object.keys(aggregated.spread).length > 0) spread = aggregated.spread
         }
-        const aggregated = aggregate(numeric)
-        measurements = { ...aggregated.measurements, ...booleans }
-        if (Object.keys(aggregated.spread).length > 0) spread = aggregated.spread
-      }
-      // A sound oracle (the repository's own suite) outranks a caller-written
-      // harness: it is the signal the literature says sampling actually scales on.
-      const verify = (options.verify ?? '').trim()
-      if (verify.length > 0) {
-        const raw = await runCommand(verify, dir, Math.min(timeboxMs, 300_000))
-        const passed = parsePassCount(raw)
-        measurements = { ...measurements, verify_passed: passed ?? 0, verify_ok: passed !== undefined }
-      }
-      results.push({
-        ...candidate,
-        ...stats,
-        files: stats.files,
-        loc: stats.loc,
-        ...measurements === undefined ? {} : { measurements },
-        ...spread === undefined ? {} : { spread },
-      })
-    }),
-  )
+        // A sound oracle outranks a caller-written harness: it is the signal the
+        // literature says sampling actually scales on.
+        if (verify.length > 0) {
+          oracleOutput = await runCommand(verify, dir, Math.min(timeboxMs, 300_000))
+          const passed = parsePassCount(oracleOutput)
+          measurements = { ...measurements, verify_passed: passed ?? 0, verify_ok: passed !== undefined }
+        }
+        results.push({
+          ...candidate,
+          ...stats,
+          files: stats.files,
+          loc: stats.loc,
+          ...measurements === undefined ? {} : { measurements },
+          ...spread === undefined ? {} : { spread },
+        })
+        if (verify.length > 0 && oracleOutput.length > 0) oracleTail.set(candidate.id, oracleOutput)
+      }),
+    )
+    // Stop early when the oracle is clean or nothing can act on the feedback.
+    if (verify.length === 0 || round === rounds) break
+    const fresh = results.slice(beforeRound).filter(entry => !entry.timedOut)
+    if (fresh.length === 0) break
+    const best = fresh.reduce((a, b) => Number(b.measurements?.verify_passed ?? 0) > Number(a.measurements?.verify_passed ?? 0) ? b : a)
+    const bestPassed = Number(best.measurements?.verify_passed ?? 0)
+    const bestOutput = oracleTail.get(best.id) ?? ''
+    const failures = parseFailCount(bestOutput)
+    if (failures === 0 && bestPassed > 0) break
+    feedback = `The best candidate in round ${round} passed ${bestPassed} checks${failures > 0 ? ` with ${failures} failures` : ''}. The verifier reported:\n\n\`\`\`\n${bestOutput.slice(-4000)}\n\`\`\`\n\nFix the remaining failures; keep what already passes.`
+  }
 
   const measured = results.map(candidate => ({
     ...candidate,
@@ -776,6 +809,14 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
         description: 'The different approaches you want tested. Each is implemented by its own worker; three is the minimum, and the workers never invent their own.',
         items: { type: 'string' },
       },
+      verify: {
+        type: 'string',
+        description: 'Sound oracle command run inside every candidate, e.g. the repository test suite. Its pass count ranks the candidates above your own criteria, and its failures become feedback for the next round.',
+      },
+      rounds: {
+        type: 'number',
+        description: 'Refinement rounds: after the first round the best candidate\'s oracle failures are given to the next round of candidates (default 1, max 5).',
+      },
       timeboxMinutes: { type: 'number', description: 'Per-candidate budget in minutes (default 10).' },
       repeats: { type: 'number', description: 'How many times the benchmark runs per candidate (default 3); the median ranks, the spread decides unresolved.' },
     },
@@ -793,6 +834,8 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
       harness?: string
       contract?: string
       runner?: string
+      verify?: string
+      rounds?: number
       approaches: string[]
       timeboxMinutes?: number
       repeats?: number
@@ -805,9 +848,8 @@ export function registerSpikeTool(ctx: import('@deepseek-ai/cordis').Context, to
         approaches: Array.isArray(args.approaches) ? args.approaches : [],
         ...args.measure === undefined ? {} : { measure: args.measure },
         ...args.harness === undefined ? {} : { harness: args.harness },
-        ...args.runner === undefined ? {} : { runner: args.runner },
-        ...args.contract === undefined ? {} : { contract: args.contract },
-
+        ...args.verify === undefined ? {} : { verify: args.verify },
+        ...args.rounds === undefined ? {} : { rounds: args.rounds },
         timeboxMs: (args.timeboxMinutes ?? totem.config.spikeTimeoutMs.get() / 60_000) * 60_000,
         parent: exec.agent,
         workspace: (exec.agent as { session?: { header?: { cwd?: string } } } | undefined)?.session?.header?.cwd,

@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { MAX_APPROACHES, MIN_APPROACHES, buildBrief, harnessFileName, measurementCommand, parsePassCount, inspectDir, parseCriteria, rank, readMeasurements, renderSpike, resolveHarness, runCommand, runSpike } from '../src/spike.ts'
+import { MAX_APPROACHES, MIN_APPROACHES, buildBrief, harnessFileName, measurementCommand, parseFailCount, parsePassCount, inspectDir, parseCriteria, rank, readMeasurements, renderSpike, resolveHarness, runCommand, runSpike } from '../src/spike.ts'
 
 const criteria = [
   { name: 'p95_ms', direction: 'min' as const, weight: 1 },
@@ -239,7 +239,46 @@ describe('the caller proposes the approaches', () => {
   })
 })
 
+describe('refinement rounds', () => {
+  test('the oracle failures come back as feedback for the next round', async () => {
+    const prompts: string[] = []
+    const fake = {
+      subagents: {
+        async startActivation(spec: { request: { prompt: { text: string }[]; cwd: string } }) {
+          prompts.push(spec.request.prompt[0].text)
+          const round = prompts.length <= 3 ? 1 : 2
+          const dir = spec.request.cwd
+          await Bun.write(join(dir, 'impl.ts'), `1 passed\n${round === 1 ? 2 : 0} failed\n`)
+          return {
+            async result() { return { output: [], stopReason: 'done' } },
+            async dispose() {},
+          }
+        },
+      },
+    }
+    const run = await runSpike(fake as never, {
+      question: 'q',
+      criteria: [{ name: 'loc', direction: 'min', weight: 1 }],
+      approaches: ['a', 'b', 'c'],
+      measure: 'echo "{\"loc\": 10}"',
+      verify: 'cat impl.ts',
+      rounds: 2,
+      workspace: join(tmpdir(), `spike-rounds-${Date.now()}`),
+    })
+    expect(run.candidates.length).toBe(6)
+    expect(prompts.length).toBe(6)
+    const secondRound = prompts.slice(3)
+    expect(secondRound.every(prompt => prompt.includes('Feedback from the previous round'))).toBe(true)
+    expect(secondRound[0]).toContain('2 failed')
+  })
+})
+
 describe('a sound oracle', () => {
+  test('reads the failure count so the next round has feedback', () => {
+    expect(parseFailCount('14 failed, 115 passed')).toBe(14)
+    expect(parseFailCount('119 passing')).toBe(0)
+  })
+
   test('reads the pass count from the usual test-runner shapes', () => {
     expect(parsePassCount('12 passed, 3 failed')).toBe(12)
     expect(parsePassCount('ok 7 tests')).toBe(7)
