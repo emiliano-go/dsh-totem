@@ -442,6 +442,7 @@ export function registerMemoryTools(ctx: Context, totem: TotemService, dependenc
     max_age_days: { type: 'number', description: 'Only items older than this many days (default 14).' },
     paths: { type: 'array', items: { type: 'string' }, description: 'Optional path prefixes; defaults to scratch/benchmark roots.' },
     dry_run: { type: 'boolean', description: 'Report candidates without deleting (default true).' },
+    only_stale: { type: 'boolean', description: 'Only prune file-state items whose evidence hash no longer matches.' },
   }, 'memory_prune_file_state_tool')
 
   ctx.tools.register(defineTool({
